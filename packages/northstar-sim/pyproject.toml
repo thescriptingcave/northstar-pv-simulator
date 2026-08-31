@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "northstar-sim"
+version = "0.12.0"
+description = "NorthStar PV plant simulator — physics, states, scenarios, telemetry, settlement"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+
+dependencies = [
+    "northstar-fetch",
+    "pandas>=2.3,<3",
+    "numpy>=1.26,<3",
+    "pvlib==0.15.2",
+    "pyarrow>=17",
+    "pydantic>=2.7",
+    "duckdb>=1.1",
+    "sqlglot>=25",
+    # Required by the TimescaleDB loader. Declared here because it was
+    # installed by hand during development and omitted from the manifest,
+    # which made `make db-load` fail on a clean checkout with
+    # ModuleNotFoundError.
+    "psycopg2-binary>=2.9",
+]
+
+[project.scripts]
+northstar-sim = "northstar_sim.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/northstar_sim"]
+
+[tool.uv.sources]
+northstar-fetch = { workspace = true }

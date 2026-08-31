@@ -1,0 +1,60 @@
+# Local TimescaleDB and Grafana for the NorthStar dataset.
+#
+# Pinned to linux/arm64 for Apple Silicon. Run from the repository root:
+#   docker compose -f db/docker-compose.yml up -d
+#
+# The `analyst` role deliberately has no access to the `truth` schema. That
+# isolation is verified by an automated test, not assumed - see
+# docs/design/15_validation_acceptance_specification.md section 11.
+
+name: northstar
+
+services:
+  timescaledb:
+    image: timescale/timescaledb-ha:pg16
+    platform: linux/arm64
+    container_name: northstar-timescaledb
+    environment:
+      POSTGRES_DB: northstar
+      POSTGRES_USER: ${POSTGRES_USER:-northstar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      # Sized for a workstation holding roughly one simulated year hot.
+      TIMESCALEDB_TELEMETRY: "off"
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/home/postgres/pgdata/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-northstar} -d northstar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 1gb
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    platform: linux/arm64
+    container_name: northstar-grafana
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      POSTGRES_USER: ${POSTGRES_USER:-northstar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      # Dashboards are provisioned from the repository so they are versioned
+      # alongside the schema they query.
+      - ../dashboards:/etc/grafana/provisioning/dashboards:ro
+      # Without this the panels' datasource uid resolves to nothing and every
+      # dashboard renders "No data" with no error anywhere.
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+
+volumes:
+  timescale_data:
+  grafana_data:

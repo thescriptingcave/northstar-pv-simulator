@@ -1,0 +1,70 @@
+# Workspace root for the NorthStar PV simulator.
+#
+# This project is not itself installable; it exists to resolve the member
+# packages together so that a single `uv sync` produces one lockfile and one
+# environment across the fetch client, the simulator and the analytics layer.
+
+[project]
+name = "northstar-pv-simulator"
+version = "0.1.0"
+description = "Utility-scale PV solar farm simulator producing analysis-ready time-series data"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+dependencies = [
+    "northstar-fetch",
+    "northstar-sim",
+    "northstar-analytics",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+northstar-fetch = { workspace = true }
+northstar-sim = { workspace = true }
+northstar-analytics = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+]
+
+# Notebook tooling. Kept out of the default install because the simulator, the
+# gates and the SQL curriculum need none of it, and JupyterLab is a large
+# dependency to impose on someone who only wants a dataset.
+#
+#     uv run --group notebooks jupyter lab
+#
+# matplotlib and scikit-learn are not listed here: they are runtime
+# dependencies of northstar-analytics and arrive with it.
+notebooks = [
+    "jupyterlab>=4.2",
+    "notebook>=7.2",
+    "jupytext>=1.16",
+    "nbclient>=0.10",
+    "ipykernel>=6.29",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 90
+target-version = "py313"
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "B", "SIM"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Test modules document behaviour in their function names and bodies; a module
+# docstring is required but per-assertion docstrings would be noise.
+"**/tests/**" = ["D103", "E402"]

@@ -1,0 +1,174 @@
+{
+  "uid": "northstar-overview",
+  "title": "NorthStar - Plant Overview",
+  "description": "Export, resource and availability at plant level.",
+  "tags": [
+    "northstar",
+    "overview"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "time": {
+    "from": "2023-06-21T05:00:00+00:00",
+    "to": "2023-06-28T05:00:00+00:00"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Grid export",
+      "description": "Metered export. Goes negative overnight: forty inverters at standby plus ten transformers at no-load. That is station service, not a fault.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 minutes', time) AS time,\n       avg(grid_export_power_kw) AS \"Grid export\"\nFROM telemetry.plant_telemetry\nWHERE $__timeFilter(time)\nGROUP BY 1 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Daily energy",
+      "description": "Energy is integrated from power, never stored independently.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "megwatth",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('1 day', time) AS time,\n       sum(grid_export_power_kw) / 60.0 / 1000.0 AS \"Energy\"\nFROM telemetry.plant_telemetry\nWHERE $__timeFilter(time)\nGROUP BY 1 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "DC, inverter AC and export",
+      "description": "The three diverge by exactly the loss chain. A widening gap with no matching loss category is an unattributed loss path.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 minutes', time) AS time,\n       avg(total_dc_power_kw) AS \"DC\",\n       avg(total_inverter_ac_power_kw) AS \"Inverter AC\",\n       avg(grid_export_power_kw) AS \"Export\"\nFROM telemetry.plant_telemetry\nWHERE $__timeFilter(time)\nGROUP BY 1 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Curtailed power",
+      "description": "Curtailment at high irradiance with no fault code is economic, not equipment. Join the price series before dispatching anyone.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 minutes', time) AS time,\n       avg(curtailed_power_kw) AS \"Curtailed\"\nFROM telemetry.plant_telemetry\nWHERE $__timeFilter(time)\nGROUP BY 1 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

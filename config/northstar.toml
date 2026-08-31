@@ -1,0 +1,247 @@
+# NorthStar PV resource acquisition configuration.
+#
+# Values here are locked by design document 17. Bump cache_version on any change
+# to data content, harmonization rules, or source product. Never mutate a
+# published cache version in place: a dataset generated against one version must
+# remain regenerable forever.
+
+cache_version = "2026.08.1"
+# Where fetched payloads are cached. Relative paths resolve against the repo
+# root, so the cache is destroyed by any workflow that deletes and re-extracts
+# the directory - which cost a full 197-request backfill once.
+#
+# Point it outside the checkout to make it survive:
+#     cache_root = "~/.cache/northstar"
+#
+# Either way the cache is gitignored and regenerable; the only cost of losing
+# it is the requests, and providers rate-limit those.
+cache_root = "resource_cache"
+trailing_refetch_days = 30
+request_timeout_s = 60
+max_retries = 5
+
+[site]
+# Pecos County, West Texas. Locked by DR-001.
+name = "northstar"
+latitude = 31.35
+longitude = -103.30
+elevation_m = 850.0
+timezone = "America/Chicago"
+hub_settlement_point = "HB_WEST"
+zone_settlement_point = "LZ_WEST"
+# Selected per DR-015 from the ERCOT network model extract (EMIL np4-160-sg).
+# LZ_WEST, 345 kV, standalone solar (no co-located storage), 3 registered
+# units - the closest scale match to the 100 MW reference plant.
+# Validate price history coverage before the full fetch; see docs/design/
+# 21_node_selection_record.md for the fallback order.
+node_settlement_point = "HRNT_SLR_RN"
+albedo = 0.25
+design_min_temp_c = -10.0
+area_acres = 700.0
+
+[harmonization]
+# NSRDB and Open-Meteo report wind at 10 m; the Faiman cell temperature model
+# expects roughly 3 m. Skipping this correction overestimates cooling.
+wind_measurement_height_m = 10.0
+wind_target_height_m = 3.0
+roughness_length_m = 0.03
+# NSRDB labels intervals at the beginning, ERCOT at the end. Normalized here.
+interval_convention = "beginning"
+
+# SRC-WX-01: NSRDB GOES CONUS v4 (PSM4), 2 km, 5-minute, 2018 onward.
+# The primary solar resource. Five-minute native data is why downscaling only
+# spans 5 min to 1 min rather than an hour to 1 min.
+[[sources]]
+source_id = "SRC-WX-01"
+enabled = true
+# Must OVERLAP the ERCOT price years, or settlement has weather for one set of
+# years and prices for another and cannot be run on real data at all. ERCOT
+# retains roughly one year; NSRDB reaches back to 2018. The overlap year is
+# what makes capture rate and curtailment economics computable.
+#
+# 2023-2024 give the multi-year span degradation analysis needs (doc 03 s10);
+# 2025 is the year that overlaps prices.
+years = [2023, 2024, 2025]
+time_step_min = 5
+max_requests_per_day = 100
+min_request_interval_s = 3.0
+
+# SRC-WX-02: NSRDB GOES TMY v4, hourly. Supplies the P50 budget baseline.
+[[sources]]
+source_id = "SRC-WX-02"
+enabled = true
+max_requests_per_day = 10
+min_request_interval_s = 3.0
+
+# SRC-WX-03: Open-Meteo ERA5 archive. Mandatory, not optional: NSRDB carries no
+# precipitation, and the soiling model is driven by real rainfall.
+[[sources]]
+source_id = "SRC-WX-03"
+enabled = true
+# Kept aligned with SRC-WX-01; precipitation drives the soiling model and must
+# cover the same years as the irradiance it modifies.
+years = [2023, 2024, 2025]
+max_requests_per_day = 100
+min_request_interval_s = 1.0
+
+# SRC-PX-01: ERCOT real-time settlement point prices, 15-minute settlement grain.
+#
+# PRICE YEARS ARE NOT WEATHER YEARS. The ERCOT public API keeps a rolling
+# window; NSRDB reaches back to 2018 and ERA5 much further. Probing HB_WEST for
+# January 2019 returns HTTP 200 with totalRecords = 0 - retention, not an error,
+# and indistinguishable from a bad request unless you look at the metadata.
+#
+# Run `make ercot-retention` to find the current boundary; it prints the exact
+# line to paste here. Setting years the API does not hold makes every one of
+# those partitions fail the non-empty check.
+[[sources]]
+source_id = "SRC-PX-01"
+enabled = true
+# MEASURED, not assumed: `make ercot-retention` on 2026-08-30 found data only
+# for 2025 and 2026. Every earlier year returns HTTP 200 with totalRecords = 0.
+#
+# 2026 is deliberately excluded - it is the current year and therefore partial,
+# so its later months would fail the non-empty check. Re-run the retention
+# probe when the window moves.
+years = [2025]
+max_requests_per_day = 500
+min_request_interval_s = 0.5
+
+# SRC-PX-02: ERCOT day-ahead prices. Not used for settlement in V1; acquired
+# because the day-ahead to real-time spread is a forecasting input.
+[[sources]]
+source_id = "SRC-PX-02"
+enabled = true
+# Same retention limit as SRC-PX-01; see the note above.
+years = [2025]
+max_requests_per_day = 500
+min_request_interval_s = 0.5
+
+# ---------------------------------------------------------------------------
+# Plant definition. Read by northstar-sim; ignored by northstar-fetch.
+#
+# Capacity is DERIVED from these counts and the module rating - it is never
+# asserted. Change a count and the nameplate changes with it, and validation
+# will reject the result if it violates an electrical limit.
+# ---------------------------------------------------------------------------
+
+[plant]
+# Version stamp recorded with every simulation run. Bump on any change to
+# equipment, topology or layout: a dataset must be traceable to the exact
+# plant definition that produced it.
+config_version = "2026.08.1"
+
+[module]
+# Heliene 96M475 - a REAL entry in the pvlib CEC module database, with
+# validated single-diode parameters.
+#
+# DR-016: the design originally specified a 585 W bifacial TOPCon. No such
+# module exists in pvlib's bundled CEC database (it tops out near 510 W), and
+# pvlib's fit_desoto could not derive parameters from datasheet values - it
+# fails even on a known-good CEC entry used as a control. Inventing
+# single-diode coefficients is exactly what design doc 05 forbids, so the
+# design moved to real equipment and let capacity re-derive.
+model = "Heliene 96M475"
+cec_database_key = "Heliene_96M475"
+rated_power_w = 477.39
+voc_v = 62.39
+vmp_v = 52.06
+isc_a = 9.84
+imp_a = 9.17
+efficiency = 0.196
+temp_coeff_pmax_per_c = -0.00433
+temp_coeff_voc_per_c = -0.0031
+# Rear-side response, applied to rear POA irradiance. The CEC electrical model
+# is monofacial; bifacial gain enters as
+#   effective_irradiance = poa_front + bifaciality * poa_rear
+# which is pvlib's own documented approach.
+bifaciality = 0.70
+degradation_year_one = 0.010
+degradation_annual = 0.0040
+
+[inverter]
+# Sungrow SG2500U-550V - a REAL entry in the pvlib CEC inverter database, with
+# validated Sandia model coefficients. Paco is exactly 2,500,000 W, so 40 units
+# give exactly 100.0 MW AC and the reference plant keeps its nameplate.
+model = "Sungrow SG2500U-550V"
+rated_ac_kw = 2500.0
+max_dc_input_kw = 3750.0
+# The real device's Vdcmax, which is 1200 V and not the 1500 V the design
+# assumed. This is the binding constraint on string length.
+max_dc_voltage_v = 1200.0
+mppt_channels = 6
+peak_efficiency = 0.9877
+thermal_derate_onset_c = 45.0
+trip_temp_c = 75.0
+startup_poa_wm2 = 20.0
+night_standby_kw = 0.75
+cec_database_key = "Sungrow_Power_Supply_Co___Ltd___SG2500U__550V_"
+
+[transformer]
+model = "Block step-up 12.5 MVA"
+rated_mva = 12.5
+primary_voltage_kv = 34.5
+secondary_voltage_kv = 0.69
+no_load_loss_kw = 9.0
+load_loss_kw_at_rated = 62.0
+thermal_time_constant_min = 45.0
+high_temp_alarm_c = 95.0
+trip_temp_c = 110.0
+
+[tracker]
+# Horizontal single-axis, N-S rows, backtracking. Locked by DR-004.
+axis_azimuth_deg = 180.0
+max_angle_deg = 60.0
+backtracking = true
+ground_coverage_ratio = 0.33
+module_height_m = 1.8
+stow_wind_speed_ms = 20.0
+row_blocks_per_power_block = 4
+
+[topology]
+# Derived against the real equipment above, not asserted.
+#
+#   Voc at -10 C  = 62.39 + (-0.193409)(-35) = 69.159 V
+#   max modules   = floor(1200 / 69.159)     = 17
+#   string        = 17 x 477.39 W            = 8.116 kWp
+#   strings/inv   = 12 x 32                  = 384
+#   DC per inv    = 384 x 8.116 kWp          = 3,116.4 kWp
+#   DC/AC         = 3,116.4 / 2,500          = 1.2466
+#   plant AC      = 40 x 2,500 kW            = 100.00 MW exactly
+power_blocks = 10
+inverters_per_block = 4
+combiners_per_inverter = 12
+strings_per_combiner = 32
+modules_per_string = 17
+weather_stations = 3
+
+[grid]
+poi_export_limit_kw = 100000.0
+nominal_voltage_kv = 345.0
+nominal_frequency_hz = 60.0
+
+[layout]
+# Blocks on a regular grid. Real sites follow parcel boundaries, but a grid is
+# sufficient for the purpose these coordinates serve: giving the advected cloud
+# field a geometry across which to lag irradiance between assets.
+block_columns = 5
+block_width_m = 620.0
+block_height_m = 460.0
+block_spacing_m = 40.0
+
+[losses]
+# Static losses that reduce output with no equipment fault. Each must be
+# separately attributable: doc 02 section 7 requires an analyst to tell
+# recoverable losses (soiling) from structural ones (degradation, mismatch).
+mismatch = 0.02
+dc_wiring = 0.015
+soiling_ratio = 0.97
+plant_age_years = 2.0
+# Inverter internal thermal behaviour, driving the DERATED state.
+inverter_thermal_rise_c = 22.0
+inverter_thermal_time_constant_min = 12.0
+# Derating begins when INTERNAL temperature exceeds the ambient onset plus the
+# full-load rise, i.e. 45 + 22 = 67 C. A West Texas summer reaches it on the
+# hottest afternoons only, which is the correct frequency for the phenomenon.
+inverter_derate_slope_per_c = 0.015
+max_thermal_derate = 0.20

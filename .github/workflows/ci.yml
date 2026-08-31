@@ -1,0 +1,52 @@
+# Runs everything that needs no database, no credentials and no network.
+#
+# The TimescaleDB and Grafana paths are deliberately absent: they are verified
+# manually and their status is recorded in STATUS.md rather than implied by a
+# green badge.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --all-extras --dev
+
+      - name: Lint
+        run: |
+          uv run ruff check packages db/tests
+          uv run ruff format --check packages
+
+      - name: Unit tests
+        run: uv run pytest packages -q
+
+      # Each gate is an independent falsifiable check. They run separately so a
+      # failure names which property broke, rather than reporting "tests failed".
+      - name: Phase gates
+        run: |
+          for gate in validate physics-gate spatial-gate plant-gate \
+                      state-gate sensor-gate loss-gate scenario-gate \
+                      financial-gate dataquality-gate storage-gate \
+                      curriculum-gate; do
+            echo "::group::$gate"
+            uv run northstar-sim --config config/northstar.toml "$gate"
+            echo "::endgroup::"
+          done
+
+      - name: Dataset acceptance report
+        run: |
+          uv run northstar-sim --config config/northstar.toml \
+            curriculum-gate --out datasets/ci --run-id ci > /dev/null
+          uv run northstar-sim --config config/northstar.toml \
+            accept --dataset datasets/ci --run-id ci

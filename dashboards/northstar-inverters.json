@@ -1,0 +1,175 @@
+{
+  "uid": "northstar-inverters",
+  "title": "NorthStar - Inverter Comparison",
+  "description": "Peer comparison, the primary fault detection method.",
+  "tags": [
+    "northstar",
+    "assets",
+    "reliability"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "time": {
+    "from": "2023-06-21T05:00:00+00:00",
+    "to": "2023-06-28T05:00:00+00:00"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Normalised output by inverter",
+      "description": "Output per unit of the irradiance each inverter actually saw. Normalising by plant-average irradiance instead manufactures underperformers out of the cloud field.",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT asset_id AS \"Inverter\",\n       sum(ac_power_kw) / 60.0 / 1000.0 AS \"Energy (MWh)\",\n       sum(ac_power_kw) / nullif(sum(poa_global), 0) AS \"Normalised output\"\nFROM telemetry.inverter_telemetry\nWHERE $__timeFilter(time) AND poa_global > 50\nGROUP BY asset_id\nORDER BY \"Normalised output\"",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Peer ratio over time",
+      "description": "Each inverter against its block mean. Removes the weather, which is the dominant signal, leaving equipment behaviour.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH peers AS (\n    SELECT time, asset_id, ac_power_kw,\n           avg(ac_power_kw) OVER (\n               PARTITION BY time, substr(asset_id, 1, 14)\n           ) AS peer_mean\n    FROM telemetry.inverter_telemetry\n    WHERE $__timeFilter(time) AND ac_power_kw > 50\n)\nSELECT time_bucket('15 minutes', time) AS time,\n       asset_id,\n       avg(ac_power_kw / nullif(peer_mean, 0)) AS \"Peer ratio\"\nFROM peers\nGROUP BY 1, 2 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Operating state distribution",
+      "description": "A FAULT inverter reporting output is a state/telemetry inconsistency, not a curiosity.",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT operating_state AS \"State\",\n       count(*) AS \"Sample minutes\",\n       round(avg(ac_power_kw)::numeric, 1) AS \"Mean AC (kW)\"\nFROM telemetry.inverter_telemetry\nWHERE $__timeFilter(time)\nGROUP BY operating_state\nORDER BY \"Sample minutes\" DESC",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Inverter internal temperature",
+      "description": "Derating begins above the ambient onset plus full-load rise. A derating inverter clips less, so the two losses are not additive.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('15 minutes', time) AS time,\n       max(internal_temp_c) AS \"Hottest inverter\",\n       avg(internal_temp_c) AS \"Fleet mean\"\nFROM telemetry.inverter_telemetry\nWHERE $__timeFilter(time)\nGROUP BY 1 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

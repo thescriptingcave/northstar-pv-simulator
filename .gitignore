@@ -1,0 +1,28 @@
+# Credentials
+.env
+
+# Acquired data payloads. The cache is regenerable from config/northstar.toml
+# plus the manifest, so committing it adds weight and redistribution questions
+# for no benefit.
+resource_cache/
+
+# Generated datasets and exports
+datasets/
+parquet/
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+dist/
+build/
+*.egg-info/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/

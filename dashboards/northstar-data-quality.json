@@ -1,0 +1,136 @@
+{
+  "uid": "northstar-data-quality",
+  "title": "NorthStar - Data Quality",
+  "description": "Completeness and plausibility. Report these alongside every performance figure: a performance ratio of 84% from 91% availability is not the same claim as 84% from 99.8%.",
+  "tags": [
+    "northstar",
+    "data quality"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "time": {
+    "from": "2023-06-21T05:00:00+00:00",
+    "to": "2023-06-28T05:00:00+00:00"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Data availability by inverter",
+      "description": "Missing means NULL. Zeros where you expect gaps mean something upstream zero-filled them.",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT asset_id AS \"Inverter\",\n       count(*) AS \"Expected\",\n       sum(CASE WHEN ac_power_kw IS NULL THEN 1 ELSE 0 END) AS \"Missing\",\n       1.0 - sum(CASE WHEN ac_power_kw IS NULL THEN 1 ELSE 0 END)::float\n             / count(*) AS \"Availability\"\nFROM telemetry.inverter_telemetry\nWHERE $__timeFilter(time)\nGROUP BY asset_id\nORDER BY \"Availability\"\nLIMIT 20",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Missing samples over time",
+      "description": "Contiguous blocks are communications outages; scattered singles are dropped samples.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('15 minutes', time) AS time,\n       sum(CASE WHEN ac_power_kw IS NULL THEN 1 ELSE 0 END) AS \"Missing\"\nFROM telemetry.inverter_telemetry\nWHERE $__timeFilter(time)\nGROUP BY 1 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Weather station disagreement",
+      "description": "Two causes: a cloud between them, or a drifting instrument. Spatial disagreement moves with the wind; calibration disagreement persists. Above 8% the interval is unusable for performance ratio.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "northstar-timescaledb"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('15 minutes', time) AS time,\n       (max(ghi) - min(ghi)) / nullif(avg(ghi), 0) AS \"Relative spread\"\nFROM telemetry.weather_telemetry\nWHERE $__timeFilter(time) AND ghi > 50\nGROUP BY 1 ORDER BY 1",
+          "datasource": {
+            "type": "postgres",
+            "uid": "northstar-timescaledb"
+          }
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}
