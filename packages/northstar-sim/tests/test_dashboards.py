@@ -225,12 +225,19 @@ def test_the_loader_dependency_is_declared() -> None:
     assert any("psycopg2" in requirement for requirement in declared)
 
 
-def test_the_physics_chain_emits_no_warnings() -> None:
+def test_the_physics_chain_emits_no_numerical_warnings() -> None:
     """Forty lines of scipy noise per run trains people to ignore output.
 
     At night effective irradiance is zero and the single-diode solver divides
     zero by zero. The NaN result is correct and zero-filled, but the warning is
     emitted per call. Suppressed narrowly at that one call.
+
+    **Scoped to numerical warnings from our own numerics.** An earlier version
+    asserted zero warnings of any kind and duly failed on a `DeprecationWarning`
+    raised inside pvlib on a newer pandas - a dependency's deprecation timetable
+    breaking a test about our arithmetic. A test that fails for reasons outside
+    the thing it describes is worse than no test: it gets muted, and takes the
+    real assertion with it.
     """
     import warnings
     from pathlib import Path
@@ -248,7 +255,11 @@ def test_the_physics_chain_emits_no_warnings() -> None:
         warnings.simplefilter("always")
         run_inverter_chain(config, weather)
 
-    assert not caught, [str(w.message)[:60] for w in caught]
+    # RuntimeWarning is the class scipy raises for divide-by-zero and invalid
+    # values - the thing the suppression exists for. Deprecations from
+    # dependencies are somebody else's release schedule.
+    numerical = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert not numerical, [str(w.message)[:60] for w in numerical]
 
 
 def test_datasource_credentials_use_grafana_interpolation(tmp_path) -> None:

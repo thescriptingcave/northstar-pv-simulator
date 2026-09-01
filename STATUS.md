@@ -95,6 +95,23 @@ price coverage. DR-015 is provisional until then — see `21 §5`.
 | Doc 01 §8 criteria 2 and 3 scored blind | Attribution and valuation are demonstrated but not scored |
 | Availability and PR recovery (T7) | Only degradation has been run |
 
+## Known noise
+
+**513 `DeprecationWarning`s on pandas 3.x / numpy 2.4+**, reading "The
+'generic' unit for NumPy timedelta is deprecated". They originate inside
+pandas' own `Timedelta` construction and inside pvlib's `solarposition`, not in
+this project's call sites - `pd.Timedelta(minutes=<int>)` is idiomatic and the
+arguments are already Python integers.
+
+Deliberately **not muted**. A `filterwarnings` entry would clean the output and
+hide a category the message says "will raise an error in the future", including
+any instance that turns out to be ours. It resolves on a pandas update.
+
+One test had to be narrowed because of this: the physics chain asserts no
+`RuntimeWarning` - the scipy divide-by-zero class it was written to guard -
+rather than no warnings at all. Asserting zero warnings of any kind made a
+dependency's deprecation timetable able to fail a test about our arithmetic.
+
 ## Known limitations, recorded not hidden
 
 - **Equipment is roughly 2019 vintage.** pvlib's bundled CEC databases are a
