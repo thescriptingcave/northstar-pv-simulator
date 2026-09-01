@@ -141,6 +141,27 @@ Two examples, both accepted by the acceptance report:
 
 Always run `northstar-sim accept` on a new dataset before trusting it.
 
+## 4c. Run on real data
+
+Once `make fetch` has populated the cache:
+
+```bash
+make real-dataset
+```
+
+This replaces both development stand-ins at once — `clearsky_resource` with
+fetched NSRDB irradiance, and `synthetic_prices` with real ERCOT settlement
+prices at the plant's own node.
+
+```bash
+uv run northstar-sim generate --real --year 2025 \
+    --out datasets/observed --run-id observed
+```
+
+`--year` defaults to the most recent cached year. Weather and price coverage
+differ — ERCOT retains about a year, NSRDB reaches back to 2018 — so a weather
+year without prices runs without curtailment and says so rather than failing.
+
 ## 5. Query it — no server required
 
 ```bash

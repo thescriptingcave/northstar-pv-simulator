@@ -386,3 +386,25 @@ Extending `15`:
 | Field extent | Sized to total advection | **Wraps** at a 10,000 km cap |
 | Development ambient | Constant | Lagged diurnal cycle plus drift, or temperature analysis inverts |
 | Sensor effect order | Listed | Physical order specified; temperature bias is an offset |
+
+
+## Observed Resource Path
+
+`clearsky_resource` is the **development fallback**, not the only source.
+`northstar_sim.observed.real_resource` reads fetched NSRDB partitions and
+returns the same frame contract, so it substitutes directly into
+`downscale_to_minute`.
+
+Two rules the observed path adds:
+
+- **Gaps are interpolated only across short outages, never zero-filled.** Zero
+  irradiance is a physically meaningful value - it means night - so zero-filling
+  a daytime gap fabricates an outage that did not happen.
+- **Components are checked against `GHI ~= DHI + DNI * cos(z)`.** A violation
+  drives transposition to NaN, and a single NaN poisons the sensor layer's
+  cumulative state for the entire series. Repair is bounded to sun above 84
+  degrees zenith and clamped to the solar constant: dividing GHI by a near-zero
+  cosine implies thousands of W/m2 and drove measured AC to 405% of nameplate.
+
+The repair runs at **load** time, so the cache stays a faithful record of what
+the provider sent. See `43`.

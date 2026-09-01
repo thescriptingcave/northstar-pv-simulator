@@ -231,6 +231,29 @@ def build_report(
     return report
 
 
+def _missing(report: AcceptanceReport, section: str, name: str, why: str) -> None:
+    """Record a check that could not be evaluated.
+
+    An aggregate over zero rows returns ``None``, and formatting that raises a
+    ``TypeError`` three frames deep. **A report that crashes tells a reader
+    less than one that fails**: the crash names a format string, while a
+    failure names the check and the reason no rows matched.
+
+    Args:
+        report: Report under construction.
+        section: Report section.
+        name: Check name.
+        why: What the query was looking for.
+    """
+    report.add(
+        section,
+        name,
+        "no data",
+        passed=False,
+        detail=f"query matched no rows ({why}) - the check could not be evaluated",
+    )
+
+
 def _provenance(report: AcceptanceReport, config, pvlib_version: str) -> None:
     """Record what produced the dataset.
 
@@ -375,6 +398,10 @@ def _distributions(report: AcceptanceReport, db) -> None:
         .iloc[0]
     )
 
+    if frame.isna().all():
+        _missing(report, "distributions", "poa_global", "no numeric telemetry")
+        return
+
     report.add(
         "distributions",
         "poa_global",
@@ -496,6 +523,9 @@ def _physics(report: AcceptanceReport, db, config, truth=None) -> None:
     night = db.execute(
         "SELECT max(ac_power_kw) FROM inverter_telemetry WHERE poa_global < 1.0"
     ).fetchone()[0]
+    if night is None:
+        _missing(report, "physics", "night_generation", "no rows with poa_global < 1")
+        night = 0.0
     report.add(
         "physics",
         "night_generation",
@@ -521,6 +551,9 @@ def _physics(report: AcceptanceReport, db, config, truth=None) -> None:
     # Measured output may exceed nameplate: calibration gain on a clipped
     # inverter. The bound is what the sensor model permits, not the cap.
     peak = db.execute("SELECT max(ac_power_kw) FROM inverter_telemetry").fetchone()[0]
+    if peak is None:
+        _missing(report, "physics", "measured_ac_within_sensor_error", "no AC readings")
+        peak = 0.0
     excess = (peak - cap) / cap if peak else 0.0
     report.add(
         "physics",
@@ -588,6 +621,15 @@ def _statistics(report: AcceptanceReport, db) -> None:
         )
         """
     ).fetchone()[0]
+    if spread is None:
+        _missing(
+            report,
+            "statistics",
+            "fleet_poa_spread",
+            "no timestamp had fleet-wide poa_global above 100",
+        )
+        return
+
     report.add(
         "statistics",
         "fleet_poa_spread",
@@ -608,15 +650,29 @@ def _energy(report: AcceptanceReport, db) -> None:
     raw = db.execute(
         "SELECT sum(grid_export_power_kw) / 60.0 / 1000.0 FROM plant_telemetry"
     ).fetchone()[0]
+    # Weight each bucket by its own sample count, not by the nominal five.
+    # Buckets can hold fewer samples - a partial bucket at either edge, or rows
+    # nulled by injected defects - and `avg * 5` then overstates them. On
+    # clear-sky data every bucket is full so the error is invisible; on real
+    # data it produced a 1.58e-03 relative discrepancy and failed a good
+    # dataset.
+    #
+    # This is the same average-of-averages trap documented in
+    # sql/timeseries/03_aggregates_and_ramps.sql.
     aggregated = db.execute(
         """
-        SELECT sum(mean_kw) * 5.0 / 60.0 / 1000.0 FROM (
-            SELECT avg(grid_export_power_kw) AS mean_kw
+        SELECT sum(mean_kw * samples) / 60.0 / 1000.0 FROM (
+            SELECT avg(grid_export_power_kw) AS mean_kw,
+                   count(grid_export_power_kw) AS samples
             FROM plant_telemetry
             GROUP BY time_bucket(INTERVAL '5 minutes', time)
         )
         """
     ).fetchone()[0]
+
+    if raw is None or aggregated is None:
+        _missing(report, "energy", "raw_vs_aggregate", "no plant telemetry rows")
+        return
 
     error = abs(raw - aggregated) / abs(raw) if raw else 0.0
     report.add("energy", "exported_energy", f"{raw:,.1f} MWh")
@@ -659,10 +715,12 @@ def _financial(report: AcceptanceReport, db, config, prices) -> None:
         "financial",
         "capture_rate",
         f"{rate:.1%}",
-        passed=0.0 < rate < 1.0,
+        passed=0.0 < rate < 1.05,
         detail="solar produces most when its output is worth least; a "
         "cloudless week drives penetration to maximum every midday and can "
-        "push capture into single digits. Above 1.0 means the join is wrong",
+        "push capture into single digits. A short window, or prices "
+        "uncorrelated with generation, sits near 1.0 by construction - well "
+        "above that means the price join is wrong",
     )
     report.add(
         "financial",

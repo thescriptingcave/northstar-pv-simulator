@@ -1393,3 +1393,50 @@ def test_cache_root_expands_a_home_relative_path(tmp_path) -> None:
         )
     )
     assert "~" not in str(load_config(target).cache_root)
+
+
+def test_space_separated_provider_columns_are_canonicalized() -> None:
+    """NSRDB returns "Wind Speed" with a space, not an underscore.
+
+    `.lower()` alone gives "wind speed", which never matched the underscored
+    keys. Five columns went unmapped in every cached partition - wind speed,
+    wind direction, dew point, relative humidity and surface albedo - while
+    GHI, DNI, DHI and Temperature matched because they are single words. That
+    is what kept it invisible until something asked for wind_speed.
+    """
+    from northstar_fetch.harmonize import rename_to_canonical
+
+    frame = pd.DataFrame(
+        columns=[
+            "GHI",
+            "Temperature",
+            "Wind Speed",
+            "Wind Direction",
+            "Dew Point",
+            "Relative Humidity",
+            "Surface Albedo",
+        ]
+    )
+    result = set(rename_to_canonical(frame).columns)
+
+    for expected in (
+        "ghi",
+        "temp_air",
+        "wind_speed",
+        "wind_direction",
+        "temp_dew",
+        "relative_humidity",
+        "albedo",
+    ):
+        assert expected in result, expected
+
+
+def test_hyphenated_and_padded_names_also_map() -> None:
+    """Separator style varies between providers and between their revisions."""
+    from northstar_fetch.harmonize import rename_to_canonical
+
+    frame = pd.DataFrame(columns=["  Wind-Speed  ", "SURFACE ALBEDO"])
+    result = set(rename_to_canonical(frame).columns)
+
+    assert "wind_speed" in result
+    assert "albedo" in result

@@ -252,3 +252,71 @@ def test_prices_are_optional(dataset, config) -> None:
     report = build_report(root, run_id, config=config, prices=None)
     assert report.accepted
     assert any(f.section == "financial" for f in report.findings)
+
+
+def test_an_empty_dataset_reports_rather_than_crashes(config, tmp_path) -> None:
+    """An aggregate over zero rows returns None, and formatting it raises.
+
+    A report that crashes tells a reader less than one that fails: the
+    traceback names a format string three frames deep, while a failure names
+    the check and why no rows matched. This happened twice - once on
+    night_generation, then again on fleet_poa_spread after only the first was
+    fixed.
+    """
+    from northstar_sim.acceptance import AcceptanceReport, _missing
+
+    report = AcceptanceReport(run_id="empty", generated_utc="now")
+    _missing(report, "physics", "night_generation", "no rows below the threshold")
+
+    assert not report.accepted
+    failure = report.failures[0]
+    assert failure.value == "no data"
+    assert "could not be evaluated" in failure.detail
+
+
+def test_a_missing_check_is_a_failure_not_a_pass(config) -> None:
+    """Unevaluated must never read as satisfied.
+
+    Treating "no rows matched" as a pass would let an empty dataset sail
+    through every check in the report.
+    """
+    from northstar_sim.acceptance import AcceptanceReport, _missing
+
+    report = AcceptanceReport(run_id="x", generated_utc="now")
+    report.add("physics", "fine", "ok", passed=True)
+    _missing(report, "energy", "raw_vs_aggregate", "no rows")
+
+    assert not report.accepted
+    assert len(report.failures) == 1
+
+
+def test_accept_prefers_real_prices_over_synthetic(config, dataset) -> None:
+    """A dataset settled against real prices must be scored against them.
+
+    The report previously always regenerated a synthetic series from the
+    dataset's own irradiance, so a `--real` dataset was scored against prices
+    unrelated to the ones in it. Capture rate came out at 123-128% - above 1.0,
+    which the check itself documents as meaning the join is wrong - at every
+    scale, because the fault was independent of the data.
+    """
+    import inspect
+
+    from northstar_sim import cli
+
+    source = inspect.getsource(cli.command_accept)
+    assert "_real_prices_for" in source
+    # Synthetic must remain the documented fallback, not the default.
+    assert "synthetic_prices" in source
+
+
+def test_real_price_lookup_returns_none_without_coverage(config, tmp_path) -> None:
+    """Forward-filling from nothing would invent a price series."""
+    import argparse
+
+    import pandas as pd
+    from northstar_sim.cli import _real_prices_for
+
+    index = pd.date_range("2025-06-20", periods=10, freq="1min", tz="UTC")
+    args = argparse.Namespace(cache_root=tmp_path, settlement_point=None)
+
+    assert _real_prices_for(config, index, args) is None

@@ -443,3 +443,17 @@ logged, never fatal.
 
 Which is correct for settlement is unresolved; `make ercot-lz-compare`
 quantifies the difference. See `42 §9`.
+
+
+## 16. Column Matching Normalizes Separators
+
+Provider column names vary in case **and** separator. NSRDB returns
+`"Wind Speed"`; matching on `column.lower()` alone gives `"wind speed"` and
+never reaches the underscored canonical keys.
+
+Five columns went unmapped in every cached partition - wind speed, wind
+direction, dew point, relative humidity, surface albedo - while `GHI`, `DNI`,
+`DHI` and `Temperature` matched because they are single words. Values were
+never affected; only names.
+
+Matching now normalizes spaces and hyphens to underscores. See `43 §2`.

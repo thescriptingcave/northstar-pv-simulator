@@ -24,8 +24,24 @@ import pandas as pd
 
 from .config import HarmonizationConfig
 
+
 # Provider column names mapped onto pvlib naming conventions. Keys are lowercase
 # so that matching is case-insensitive across providers.
+def _canonical_key(column: str) -> str:
+    """Reduce a provider column name to a lookup key.
+
+    Case and separators vary between providers and between revisions of the
+    same provider, so both are normalized rather than matched literally.
+
+    Args:
+        column: Provider column name.
+
+    Returns:
+        A lowercase, underscore-separated key.
+    """
+    return str(column).strip().lower().replace(" ", "_").replace("-", "_")
+
+
 CANONICAL_COLUMNS: dict[str, str] = {
     "ghi": "ghi",
     "dni": "dni",
@@ -66,10 +82,17 @@ def rename_to_canonical(frame: pd.DataFrame) -> pd.DataFrame:
     Returns:
         A new frame with recognised columns renamed.
     """
+    # Normalize separators as well as case. NSRDB returns "Wind Speed" with a
+    # space, and `.lower()` alone gives "wind speed", which never matches the
+    # underscored keys. Five columns went unmapped in every cached partition -
+    # wind speed, wind direction, dew point, relative humidity and surface
+    # albedo - while GHI, DNI, DHI and Temperature matched because they are
+    # single words. That is what made the failure invisible until something
+    # actually asked for wind_speed.
     mapping = {
-        column: CANONICAL_COLUMNS[column.lower()]
+        column: CANONICAL_COLUMNS[_canonical_key(column)]
         for column in frame.columns
-        if column.lower() in CANONICAL_COLUMNS
+        if _canonical_key(column) in CANONICAL_COLUMNS
     }
     return frame.rename(columns=mapping)
 

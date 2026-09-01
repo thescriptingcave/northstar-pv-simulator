@@ -94,6 +94,15 @@ storage-gate: ## Run the Phase 11 storage gate
 dataset: ## Export a development dataset to Parquet
 	uv run northstar-sim --config config/northstar.toml storage-gate --out datasets/dev
 
+inspect-dataset: ## Inspect a dataset when acceptance reports "no data"
+	./scripts/inspect_dataset.sh datasets/observed observed
+
+real-dataset: ## Generate a dataset from fetched NSRDB and ERCOT data
+	uv run northstar-sim --config config/northstar.toml generate --real \
+		--out datasets/observed --run-id observed
+	uv run northstar-sim --config config/northstar.toml accept \
+		--dataset datasets/observed --run-id observed
+
 generate: ## Generate a custom dataset (see: northstar-sim generate --help)
 	uv run northstar-sim --config config/northstar.toml generate --out datasets/custom
 

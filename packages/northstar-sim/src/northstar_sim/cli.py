@@ -266,6 +266,19 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--no-faults", action="store_true")
     gen.add_argument("--no-defects", action="store_true")
     gen.add_argument("--no-curtailment", action="store_true")
+    gen.add_argument(
+        "--real",
+        action="store_true",
+        help="use fetched NSRDB irradiance and ERCOT prices instead of the "
+        "clear-sky and synthetic stand-ins (requires `make fetch`)",
+    )
+    gen.add_argument("--year", type=int, default=None, help="year to load with --real")
+    gen.add_argument("--cache-root", type=Path, default=None)
+    gen.add_argument(
+        "--settlement-point",
+        default=None,
+        help="price node for --real; defaults to the plant's own node",
+    )
 
     load = sub.add_parser(
         "load", help="load an exported dataset into TimescaleDB and refresh aggregates"
@@ -284,6 +297,17 @@ def build_parser() -> argparse.ArgumentParser:
     accept.add_argument("--run-id", default="curriculum")
     accept.add_argument("--report", type=Path, default=None)
     accept.add_argument("--no-prices", action="store_true")
+    accept.add_argument(
+        "--cache-root",
+        type=Path,
+        default=None,
+        help="where to look for cached real prices",
+    )
+    accept.add_argument(
+        "--settlement-point",
+        default=None,
+        help="price node; defaults to the plant's own node",
+    )
 
     curr = sub.add_parser(
         "curriculum-gate",
@@ -885,6 +909,51 @@ def command_dataquality_gate(config: PlantConfig, args: argparse.Namespace) -> i
     return 0 if gate.passed else 1
 
 
+def _real_prices_for(config: PlantConfig, index, args):
+    """Load cached settlement prices covering a dataset's time range.
+
+    Args:
+        config: Plant configuration.
+        index: The dataset's timestamps.
+        args: Parsed arguments, read for cache and settlement point overrides.
+
+    Returns:
+        Prices aligned to ``index``, or ``None`` when nothing covers it.
+    """
+    from .observed import align_prices, real_prices
+
+    if len(index) == 0:
+        return None
+
+    years = sorted({int(y) for y in index.year.unique()})
+    frames = []
+    for year in years:
+        try:
+            frames.append(
+                real_prices(
+                    config,
+                    year,
+                    settlement_point=getattr(args, "settlement_point", None),
+                    cache_root=getattr(args, "cache_root", None),
+                )
+            )
+        except (FileNotFoundError, ImportError):
+            continue
+
+    if not frames:
+        return None
+
+    combined = pd.concat(frames).sort_index()
+    combined = combined[~combined.index.duplicated(keep="first")]
+
+    # A price series that starts after the dataset does would be forward-filled
+    # from nothing, so require real coverage rather than inventing it.
+    if combined.empty or combined.index[0] > index[0]:
+        return None
+
+    return align_prices(combined, index)
+
+
 def command_accept(config: PlantConfig, args: argparse.Namespace) -> int:
     """Generate an acceptance report for an exported dataset.
 
@@ -911,7 +980,21 @@ def command_accept(config: PlantConfig, args: argparse.Namespace) -> int:
         connection.close()
         frame["time"] = pd.to_datetime(frame["time"], utc=True)
         series = frame.set_index("time")["ghi"]
-        prices = synthetic_prices(series.index, series, seed=11)
+
+        # Prefer the real prices the dataset was settled against.
+        #
+        # This report previously **always** regenerated a synthetic series from
+        # the dataset's own irradiance, so a dataset built with `--real` was
+        # scored against prices that had nothing to do with the ones in it.
+        # Capture rate came out at 123-128% - above 1.0, which the check itself
+        # documents as meaning the join is wrong - at every scale, because the
+        # fault was independent of the data.
+        prices = _real_prices_for(config, series.index, args)
+        if prices is None:
+            prices = synthetic_prices(series.index, series, seed=11)
+            print("Prices: synthetic (no cached series covers this dataset)\n")
+        else:
+            print("Prices: observed, from the fetch cache\n")
 
     report = build_report(args.dataset, args.run_id, config=config, prices=prices)
     print(report.render())
@@ -952,6 +1035,9 @@ def command_generate(config: PlantConfig, args: argparse.Namespace) -> int:
 
     if args.plant_age is not None:
         config.losses.plant_age_years = args.plant_age
+
+    if getattr(args, "real", False):
+        return _generate_from_observations(config, args, run_id)
 
     source = clearsky_resource(
         config,
@@ -1008,6 +1094,124 @@ def command_generate(config: PlantConfig, args: argparse.Namespace) -> int:
     )
     print(f"\n  analyst tree    {args.out}/analyst/run_id={run_id}")
     print(f"  truth tree      {args.out}/truth/run_id={run_id}")
+    print(f"\nNext: northstar-sim accept --dataset {args.out} --run-id {run_id}")
+    return 0
+
+
+def _generate_from_observations(
+    config: PlantConfig, args: argparse.Namespace, run_id: str
+) -> int:
+    """Generate a dataset from fetched observations.
+
+    Every figure this project has published came from the clear-sky and
+    synthetic stand-ins, because nothing read the fetch cache. Clear-sky is
+    smooth by construction - one sinusoid a day, no transients, no gaps - so
+    results derived from it are provisional until recomputed on real
+    irradiance.
+
+    Args:
+        config: Plant configuration.
+        args: Parsed arguments.
+        run_id: Dataset identifier.
+
+    Returns:
+        Zero on success.
+    """
+    import shutil
+
+    from .market import CommercialTerms, economic_curtailment_mask
+    from .observed import (
+        align_prices,
+        available_years,
+        real_prices,
+        real_resource,
+    )
+
+    year = args.year
+    if year is None:
+        years = available_years(config, cache_root=args.cache_root)
+        if not years:
+            print("No cached weather found. Run `make fetch` first.")
+            return 1
+        # The most recent year is the one likeliest to overlap price coverage,
+        # since ERCOT retains far less history than NSRDB.
+        year = years[-1]
+        print(f"No --year given; using the most recent cached year, {year}.\n")
+
+    load = real_resource(config, year, cache_root=args.cache_root)
+    print(f"Resource: {load.describe()}")
+
+    # Honour --start/--end here too. Without this every --real run is a full
+    # year: 525,596 timestamps and 56 million rows, roughly an hour. That makes
+    # each diagnostic iteration cost an hour when a week would answer the same
+    # question in minutes.
+    window = load.frame
+    if args.start and args.end:
+        start = pd.Timestamp(args.start, tz="UTC")
+        end = pd.Timestamp(args.end, tz="UTC")
+        # The defaults describe a summer week in the clear-sky path; applying
+        # them to a fetched year would silently truncate it, so a window is
+        # only applied when it falls inside the data.
+        if start >= window.index[0] and end <= window.index[-1]:
+            window = window.loc[start:end]
+            print(f"Window:   {start.date()} to {end.date()} ({len(window):,} rows)")
+
+    if window.empty:
+        print("The requested window contains no cached data.")
+        return 1
+
+    base = downscale_to_minute(window, config, seed=args.seed)
+    for column, default in (
+        ("wind_speed", args.wind_speed),
+        ("wind_direction", args.wind_direction),
+    ):
+        if column in window.columns:
+            base[column] = window[column].reindex(base.index, method="ffill")
+        else:
+            base[column] = default
+
+    curtailment = None
+    price_note = "none"
+    if not args.no_curtailment:
+        try:
+            prices = align_prices(
+                real_prices(
+                    config,
+                    year,
+                    settlement_point=args.settlement_point,
+                    cache_root=args.cache_root,
+                ),
+                base.index,
+            )
+        except FileNotFoundError as error:
+            # Weather and price coverage genuinely differ - ERCOT retains about
+            # a year - so a weather year without prices is expected, not an
+            # error. Say so rather than failing the run.
+            print(f"Prices: {error}\n         continuing without curtailment.")
+        else:
+            curtailment = economic_curtailment_mask(prices, CommercialTerms())
+            price_note = f"observed, {int(curtailment.sum()):,} curtailed minute(s)"
+
+    result = run_plant(
+        config,
+        build_plant(config),
+        base,
+        seed=args.seed,
+        inject_faults=not args.no_faults,
+        inject_defects=not args.no_defects,
+        economic_curtailment=curtailment,
+    )
+
+    shutil.rmtree(args.out, ignore_errors=True)
+    manifest = export_parquet(result, args.out, run_id=run_id)
+
+    exported = result.plant["grid_export_power_kw"].sum() / 60 / 1000
+    print(f"\nGenerated {manifest.total_rows:,} rows from observed data\n")
+    print(f"  year            {year}")
+    print(f"  resource        {load.source_slug}")
+    print(f"  prices          {price_note}")
+    print(f"  exported        {exported:,.1f} MWh")
+    print(f"\n  analyst tree    {args.out}/analyst/run_id={run_id}")
     print(f"\nNext: northstar-sim accept --dataset {args.out} --run-id {run_id}")
     return 0
 

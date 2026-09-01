@@ -95,6 +95,52 @@ price coverage. DR-015 is provisional until then — see `21 §5`.
 | Doc 01 §8 criteria 2 and 3 scored blind | Attribution and valuation are demonstrated but not scored |
 | Availability and PR recovery (T7) | Only degradation has been run |
 
+## Phase 13 — in progress, on branch
+
+`generate --real` runs the plant on fetched NSRDB irradiance and ERCOT prices.
+The loaders, harmonization, physics and export all work; a full simulated year
+produces 56 million rows and 287,835.8 MWh.
+
+**Acceptance rejects the output, and the cause is not yet found.**
+
+| | |
+|---|---|
+| Truth POA | 20,929,040 non-null, correct |
+| **Measured POA** | **33,360 non-null, every value exactly zero** |
+| Measured AC | correct: 830.57 kW mean against 834.67 truth |
+| Measured cell temperature | 1.6 to 11.7 C — impossible for West Texas |
+
+Irradiance and temperature channels are destroyed; power channels are intact.
+Every remaining failure follows from that: NaN correlations, empty fleet
+spread, PR of 0.0000, and all 525,596 intervals filtered because the KPI
+filter needs POA.
+
+**Eliminated:**
+
+- injected defects — a `--no-defects` run is identical
+- the closure repair — truth is clean, peak DC 106.9% of nameplate
+- sensor soiling — 3%/year gives a factor of 0.97, not zero
+- record duration — measured POA survives a 365-day index when only a day is
+  simulated
+
+**Not eliminated:** simulation volume. Every working run was 3–7 days; the
+failing one is 21 million inverter rows. Something in the sensor or export path
+behaves differently at that scale.
+
+**Resolved:** `capture_rate` was 123-128% because the report always
+regenerated a **synthetic** price series from the dataset's own irradiance,
+never using the real prices the dataset was settled against. It now prefers
+cached real prices and falls back to synthetic only when nothing covers the
+range, saying which it used. On a week-long `--real` run: 123.2% -> 101.9%,
+and the ceiling moved to 1.05 because prices uncorrelated with generation sit
+at 1.0 by construction.
+
+**Also open:**
+- `82 illegal inverter transitions, first: STARTING -> CURTAILED` — a state
+  machine gap that only real price data reaches
+
+Use `--start`/`--end` with `--real` to iterate in minutes rather than an hour.
+
 ## Known noise
 
 **513 `DeprecationWarning`s on pandas 3.x / numpy 2.4+**, reading "The

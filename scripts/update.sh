@@ -15,7 +15,21 @@
 set -euo pipefail
 
 archive="${1:-}"
-if [ -z "$archive" ] || [ ! -f "$archive" ]; then
+
+# Expand a leading "~" ourselves. Make passes the argument quoted, so the shell
+# never expands it and the script receives a literal "~/Downloads/...". The
+# same tilde assumption bit `cache_root` in config parsing.
+case "$archive" in
+    "~/"*) archive="$HOME/${archive#\~/}" ;;
+    "~")   archive="$HOME" ;;
+esac
+
+if [ -z "$archive" ]; then
+    echo "usage: $0 <path-to-northstar-pv-simulator.zip>" >&2
+    exit 1
+fi
+if [ ! -f "$archive" ]; then
+    echo "no such archive: $archive" >&2
     echo "usage: $0 <path-to-northstar-pv-simulator.zip>" >&2
     exit 1
 fi
