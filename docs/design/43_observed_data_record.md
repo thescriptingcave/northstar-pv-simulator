@@ -239,13 +239,24 @@ without ever seeing ERCOT data. That agreement is a meaningful check on the
 synthetic stand-in, though a winter month flatters solar capture and the
 annual figure is the one to publish.
 
-### What remains open
+### Resolved: illegal STARTING -> CURTAILED transitions
 
-`40 illegal STARTING -> CURTAILED transitions`. Curtailment is commanded while
+82 per simulated year. Curtailment is commanded while
 an inverter is inside its startup dwell and `07`'s transition table has no edge
 for it. Only real price data reaches this path: synthetic prices rarely go
-negative in the minutes after sunrise. It does not block the dataset - the
-acceptance report passes - but it is a genuine gap in the state machine.
+negative in the minutes after sunrise. **The dataset passed acceptance carrying all 82 of them.** `state-gate`
+asserts zero illegal transitions; the acceptance report never looked. A report
+that ignores what a gate enforces is worse than silent - it actively
+contradicts it.
+
+Two fixes:
+
+- `CURTAILED` is now reachable from `STARTING`. A curtailment command does not
+  wait for the startup dwell to finish, and an inverter told to stop while
+  starting stops. The edge was missing because synthetic prices rarely go
+  negative in the minutes after sunrise, so the path was never exercised.
+- The acceptance report now checks transition legality, so it can no longer
+  accept a dataset `state-gate` would reject.
 
 ### The cost, honestly
 

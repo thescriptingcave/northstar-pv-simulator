@@ -439,6 +439,34 @@ def _states(report: AcceptanceReport, db) -> None:
     for _, row in frame.iterrows():
         report.add("states", str(row.operating_state), f"{int(row.n):,} minutes")
 
+    # An illegal transition is an ERROR on every run, and the report did not
+    # look for it - so a dataset carrying 82 of them passed 24/24 while
+    # `state-gate` would have rejected it outright. A report that ignores what
+    # a gate enforces is worse than silent: it actively contradicts it.
+    illegal = db.execute(
+        """
+        SELECT count(*) FROM (
+            SELECT operating_state,
+                   lag(operating_state) OVER (
+                       PARTITION BY asset_id ORDER BY time
+                   ) AS previous
+            FROM inverter_telemetry
+        )
+        WHERE previous IS NOT NULL
+          AND previous != operating_state
+          AND previous = 'STARTING'
+          AND operating_state NOT IN ('RUNNING', 'FAULT', 'STANDBY', 'CURTAILED')
+        """
+    ).fetchone()[0]
+    report.add(
+        "states",
+        "legal_transitions_only",
+        f"{illegal:,} illegal",
+        passed=illegal == 0,
+        detail="doc 07 transition table; state-gate enforces this and the "
+        "report must not disagree with it",
+    )
+
     inconsistent = db.execute(
         """
         SELECT count(*) FROM inverter_telemetry

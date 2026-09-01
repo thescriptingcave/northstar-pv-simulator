@@ -93,8 +93,21 @@ INVERTER_TRANSITIONS: dict[InverterState, frozenset[InverterState]] = {
             InverterState.MAINTENANCE,
         }
     ),
+    # CURTAILED is reachable from STARTING: a curtailment command does not wait
+    # for the startup dwell to finish, and an inverter told to stop while
+    # starting stops.
+    #
+    # Omitted originally because synthetic prices rarely go negative in the
+    # minutes after sunrise, so the path was never exercised. Real ERCOT prices
+    # produced 82 of these in a single year - logged as ERROR on every run
+    # while the dataset still passed acceptance.
     InverterState.STARTING: frozenset(
-        {InverterState.RUNNING, InverterState.FAULT, InverterState.STANDBY}
+        {
+            InverterState.RUNNING,
+            InverterState.FAULT,
+            InverterState.STANDBY,
+            InverterState.CURTAILED,
+        }
     ),
     InverterState.RUNNING: frozenset(
         {

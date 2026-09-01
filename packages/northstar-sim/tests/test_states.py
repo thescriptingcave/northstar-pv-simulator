@@ -362,3 +362,24 @@ def test_state_gate_passes(config, run) -> None:
     """The Phase 5 acceptance gate."""
     gate = run_state_gate(config, run)
     assert gate.passed, gate.render()
+
+
+def test_curtailment_may_interrupt_a_startup() -> None:
+    """A curtailment command does not wait for the startup dwell to finish.
+
+    Omitted originally because synthetic prices rarely go negative in the
+    minutes after sunrise, so the path was never exercised. Real ERCOT prices
+    produced 82 of these transitions in a single simulated year.
+    """
+    from northstar_sim.states import INVERTER_TRANSITIONS, InverterState
+
+    assert InverterState.CURTAILED in INVERTER_TRANSITIONS[InverterState.STARTING]
+
+
+def test_startup_still_cannot_jump_straight_to_running_from_standby() -> None:
+    """Widening one edge must not weaken the sequence the table exists for."""
+    from northstar_sim.states import INVERTER_TRANSITIONS, InverterState
+
+    assert InverterState.RUNNING not in INVERTER_TRANSITIONS[InverterState.STANDBY], (
+        "RUNNING must still be reached only through STARTING"
+    )
