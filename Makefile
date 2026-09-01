@@ -94,6 +94,19 @@ storage-gate: ## Run the Phase 11 storage gate
 dataset: ## Export a development dataset to Parquet
 	uv run northstar-sim --config config/northstar.toml storage-gate --out datasets/dev
 
+drills: ## List the interview-shaped SQL drills
+	@echo "SQL drills - run these in DuckDB or TablePlus:"
+	@ls -1 sql/drills/*.sql
+	@echo; echo "See sql/drills/README.md"
+
+learn: ## Run a PV learning file: make learn FILE=sql/learning/week1_resource.sql
+	@test -n "$(FILE)" || { echo "usage: make learn FILE=sql/learning/week1_resource.sql"; ls -1 sql/learning/*.sql; exit 1; }
+	uv run python scripts/run_sql_file.py "$(FILE)"
+
+drill: ## Run a SQL drill: make drill FILE=sql/drills/01_window_functions.sql
+	@test -n "$(FILE)" || { echo "usage: make drill FILE=sql/drills/01_window_functions.sql"; ls -1 sql/drills/*.sql; exit 1; }
+	uv run python scripts/run_sql_file.py "$(FILE)"
+
 score: ## Score blind analysis against injected truth (release gate)
 	uv run northstar-sim --config config/northstar.toml score \
 		--dataset datasets/year --run-id year

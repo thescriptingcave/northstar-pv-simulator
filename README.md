@@ -25,7 +25,9 @@ WHERE grid_export_power_kw IS NOT NULL
 GROUP BY 1 ORDER BY 1;
 ```
 
-New here? **[QUICKSTART.md](QUICKSTART.md)**. What remains: **[STATUS.md](STATUS.md)**.
+New here? **[QUICKSTART.md](QUICKSTART.md)**. Learning PV analytics?
+**[LEARNING.md](LEARNING.md)** — a six-week track. What remains:
+**[STATUS.md](STATUS.md)**.
 
 ---
 
