@@ -14,6 +14,28 @@
 
 set -euo pipefail
 
+# Re-exec from a copy before doing anything.
+#
+# Bash reads a script incrementally, and this script overwrites itself during
+# extraction - so bash resumes reading the NEW file at the OLD byte offset and
+# fails with a parse error partway through. The work was already done by then,
+# which made it look like corruption rather than a self-update artefact.
+#
+# An updater that lives inside what it updates has to step outside first.
+if [ "${NORTHSTAR_UPDATE_REEXEC:-}" != "1" ]; then
+    # $0 becomes the temp copy after re-exec, so resolve the repo here and
+    # pass it through.
+    NORTHSTAR_REPO="$(cd "$(dirname "$0")/.." && pwd)"
+    export NORTHSTAR_REPO
+    _copy="$(mktemp)"
+    cat "$0" > "$_copy"
+    chmod +x "$_copy"
+    NORTHSTAR_UPDATE_REEXEC=1 "$_copy" "$@"
+    _status=$?
+    rm -f "$_copy"
+    exit $_status
+fi
+
 archive="${1:-}"
 
 # Expand a leading "~" ourselves. Make passes the argument quoted, so the shell
@@ -34,28 +56,27 @@ if [ ! -f "$archive" ]; then
     exit 1
 fi
 
-repo="$(cd "$(dirname "$0")/.." && pwd)"
+repo="${NORTHSTAR_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$repo"
 echo "Updating $repo"
 echo
 
-stash="$(mktemp -d)"
-trap 'rm -rf "$stash"' EXIT
-
-# 1. Set aside anything local.
+# Local state is NOT stashed. The archive contains no .env, no datasets/ and
+# no resource_cache/, so extracting over the top cannot touch them.
+#
+# An earlier version copied them to a temp directory, deleted the originals,
+# and copied back. That is pure risk for no benefit: the delete happens before
+# the restore, so a failed or interrupted copy loses the data outright - and it
+# did, costing a 56-million-row dataset that took an hour to build.
+#
+# Verify for yourself before trusting this:
+#     unzip -l <archive> | grep -E "\.env$|datasets/|resource_cache"
 for item in .env datasets resource_cache; do
-    if [ -e "$item" ]; then
-        cp -R "$item" "$stash/" && echo "  preserved  $item"
-    fi
+    [ -e "$item" ] && echo "  untouched  $item"
 done
+echo
 
-# 2. The shipped config is a starting point. If yours differs, keep it and put
-#    the new one alongside so the difference is visible rather than silent.
 config_changed=false
-if [ -f config/northstar.toml ]; then
-    cp config/northstar.toml "$stash/northstar.toml.local"
-    config_changed=true
-fi
 
 # 3. Extract over the top. Existing files are replaced; local-only files that
 #    the archive does not contain — including .env — are untouched.
@@ -70,18 +91,10 @@ cp -R "$src"/. "$repo"/
 rm -rf "$tmp"
 echo "  extracted  archive over checkout"
 
-# 4. Restore.
-for item in .env datasets resource_cache; do
-    if [ -e "$stash/$item" ]; then
-        rm -rf "$repo/$item"
-        cp -R "$stash/$item" "$repo"/ && echo "  restored   $item"
-    fi
-done
-
-# 5. Report a config difference rather than silently choosing for you.
+# 4. Report a config difference rather than silently choosing for you.
 if [ "$config_changed" = true ]; then
-    if ! diff -q "$stash/northstar.toml.local" config/northstar.toml >/dev/null 2>&1; then
-        cp "$stash/northstar.toml.local" config/northstar.toml.yours
+    if ! diff -q /tmp/northstar.toml.local.$$ config/northstar.toml >/dev/null 2>&1; then
+        cp /tmp/northstar.toml.local.$$ config/northstar.toml.yours
         echo
         echo "  NOTE: config/northstar.toml differs from your previous copy."
         echo "        Yours is saved as config/northstar.toml.yours"

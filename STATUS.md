@@ -151,6 +151,34 @@ at 1.0 by construction.
 
 Use `--start`/`--end` with `--real` to iterate in minutes rather than an hour.
 
+## A note on scripts/update.sh
+
+It **destroyed a 56-million-row dataset**. The restore path was:
+
+```bash
+rm -rf "$repo/$item"           # delete the original
+cp -R "$stash/$item" "$repo"/  # copy 2 GB back from a temp directory
+```
+
+The delete happens first, so a failed or interrupted copy loses the data
+outright - and the trap removes the stash on exit.
+
+**The stashing was never necessary.** The archive contains no `.env`, no
+`datasets/` and no `resource_cache/`, so extracting over the top cannot touch
+them. Verify before trusting it:
+
+```bash
+unzip -l <archive> | grep -E "\.env$|datasets/|resource_cache"
+```
+
+It now touches nothing local, and re-execs from a copy of itself first -
+bash reads a script incrementally, so overwriting it mid-run made bash resume
+at the old byte offset in the new file.
+
+**Use `git pull` instead.** An updater living inside what it updates has two
+failure modes that version control simply does not have. This script should be
+deleted now that the repository is on GitHub.
+
 ## Known noise
 
 **513 `DeprecationWarning`s on pandas 3.x / numpy 2.4+**, reading "The

@@ -94,6 +94,9 @@ storage-gate: ## Run the Phase 11 storage gate
 dataset: ## Export a development dataset to Parquet
 	uv run northstar-sim --config config/northstar.toml storage-gate --out datasets/dev
 
+headline: ## Recompute the README figures from a real dataset
+	uv run python scripts/headline_figures.py datasets/year year
+
 check-schemas: ## Compare Parquet column types across date partitions
 	uv run python scripts/check_partition_schemas.py datasets/observed poa_global
 
