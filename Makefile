@@ -94,6 +94,10 @@ storage-gate: ## Run the Phase 11 storage gate
 dataset: ## Export a development dataset to Parquet
 	uv run northstar-sim --config config/northstar.toml storage-gate --out datasets/dev
 
+score: ## Score blind analysis against injected truth (release gate)
+	uv run northstar-sim --config config/northstar.toml score \
+		--dataset datasets/year --run-id year
+
 headline: ## Recompute the README figures from a real dataset
 	uv run python scripts/headline_figures.py datasets/year year
 

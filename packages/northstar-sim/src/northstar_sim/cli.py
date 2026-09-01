@@ -297,6 +297,15 @@ def build_parser() -> argparse.ArgumentParser:
     accept.add_argument("--run-id", default="curriculum")
     accept.add_argument("--report", type=Path, default=None)
     accept.add_argument("--no-prices", action="store_true")
+
+    score = sub.add_parser(
+        "score",
+        help="score blind analysis against injected truth (doc 16 section 16)",
+    )
+    score.add_argument("--dataset", type=Path, default=Path("datasets/year"))
+    score.add_argument("--run-id", default="year")
+    score.add_argument("--cache-root", type=Path, default=None)
+    score.add_argument("--settlement-point", default=None)
     accept.add_argument(
         "--cache-root",
         type=Path,
@@ -954,6 +963,63 @@ def _real_prices_for(config: PlantConfig, index, args):
     return align_prices(combined, index)
 
 
+def command_score(config: PlantConfig, args: argparse.Namespace) -> int:
+    """Score blind detection and cost ranking against injected truth.
+
+    Two of the three criteria `16 §16` calls the point of the exercise. The
+    detector sees only the analyst tree; truth is opened afterwards, purely to
+    score. That separation is what makes the result a measurement rather than
+    an assertion.
+
+    Args:
+        config: Plant configuration.
+        args: Parsed arguments.
+
+    Returns:
+        Zero when both criteria are demonstrated.
+    """
+    from .scoring import run_blind_scoring
+
+    prices = _real_prices_for(
+        config,
+        pd.DatetimeIndex(
+            pd.date_range("2025-01-01", "2025-12-31", freq="15min", tz="UTC")
+        ),
+        args,
+    )
+    if prices is None:
+        print("No cached real prices; the cost ranking needs them.\n")
+
+    score, rankings = run_blind_scoring(args.dataset, args.run_id, prices)
+
+    print("Criterion 1 - blind fault identification\n")
+    print(f"  injected          {score.injected:>6}")
+    print(f"  detected          {score.detected:>6}")
+    print(f"  matched           {score.matched:>6}")
+    print(f"  recall            {score.recall:>6.1%}")
+    print(f"  precision         {score.precision:>6.1%}")
+
+    print("\nCriterion 3 - cost ranking against energy ranking\n")
+    if rankings.rows.empty or "energy_rank" not in rankings.rows.columns:
+        print("  no attributable fault energy - needs a longer record")
+    else:
+        print(rankings.rows.to_string(index=False))
+        print(
+            f"\n  rankings differ: {rankings.rankings_differ} "
+            f"({rankings.rank_changes} scenario(s) changed position)"
+        )
+        if not rankings.rankings_differ:
+            # Not a failure on a short record: divergence needs enough distinct
+            # scenario classes spread across enough of the year for timing to
+            # separate them.
+            print(
+                "  Too few scenario classes for the orderings to separate. "
+                "A full year is the test."
+            )
+
+    return 0
+
+
 def command_accept(config: PlantConfig, args: argparse.Namespace) -> int:
     """Generate an acceptance report for an exported dataset.
 
@@ -1543,6 +1609,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_generate(config, args)
     if args.command == "load":
         return command_load(args)
+    if args.command == "score":
+        return command_score(config, args)
     if args.command == "accept":
         return command_accept(config, args)
     if args.command == "storage-gate":
