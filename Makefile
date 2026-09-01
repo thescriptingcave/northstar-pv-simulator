@@ -6,9 +6,9 @@ help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 
-#update: ## Update from a release archive, preserving .env and datasets/
-#	@test -n "$(ARCHIVE)" || { echo "usage: make update ARCHIVE=<path to zip>"; exit 1; }
-#	./scripts/update.sh "$(ARCHIVE)"
+update: ## Update from a release archive, preserving .env and datasets/
+	@test -n "$(ARCHIVE)" || { echo "usage: make update ARCHIVE=<path to zip>"; exit 1; }
+	./scripts/update.sh "$(ARCHIVE)"
 
 setup: ## Create the virtualenv and install the workspace
 	uv venv --python 3.13

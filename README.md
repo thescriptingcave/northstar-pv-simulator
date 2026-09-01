@@ -115,15 +115,39 @@ of them plus 400 unit tests.
 
 ## Results the dataset produces
 
-Measured, not illustrative.
+Measured on a **full simulated year of 2025** using fetched NSRDB irradiance
+and real ERCOT settlement prices at the plant's own node - not modelled.
 
-**Curtailment makes money.** `LOSS_CURTAILMENT` of 3,425 MWh carries a revenue
-impact of **-$12,358**. Any pipeline reporting lost revenue as unconditionally
-positive breaks here, and finding out why is the point.
+**Curtailment makes money.** 11,572 MWh curtailed carries a revenue impact of
+**-$337,369**. Negative, because the intervals avoided cleared below the PTC
+floor: generating into them would have cost more than not generating. Any
+pipeline reporting lost revenue as unconditionally positive breaks here, and
+finding out why is the point.
 
-**Capture rate 57.8%.** Generation-weighted price $12.31 against time-weighted
-$26.07. Invisible in every physical metric; emerges only from joining prices to
-production shape.
+**Capture rate 82.2%.** Generation-weighted price $19.17 against time-weighted
+$23.31 over 2025. Invisible in every physical metric; emerges only from joining
+prices to production shape.
+
+**Capacity factor 32.9%**, 287,836 MWh exported, peak 98.7 MW.
+
+### The synthetic price model was too pessimistic
+
+Before real prices were available, these figures came from `synthetic_prices`,
+a development stand-in built without ever seeing ERCOT data. The comparison is
+worth keeping:
+
+| | synthetic | real 2025 |
+|---|---|---|
+| capture rate | 57.8% | **82.2%** |
+| generation-weighted price | $12.31 | **$19.17** |
+| curtailment value | -$12,358 | **-$337,369** |
+
+The stand-in **over-stated price cannibalisation** by roughly 24 points. Its
+*qualitative* claims survived - capture well below unity, curtailment carrying
+negative value - but its magnitudes did not, and anything quantitative derived
+from it should be re-derived.
+
+That gap is the argument for the acquisition layer existing at all.
 
 **Derating suppresses clipping.** At 40 C: clipping 66.0 MWh, no derating. At
 50 C: derating 60.3 MWh, clipping falls to **26.7 MWh**. The two losses are not

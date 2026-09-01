@@ -263,3 +263,35 @@ Six defects, and every one was mine:
 Four of the six were **acceptance checks written against clean, short
 fixtures** that real year-long data broke. `§8` states the pass that would find
 the rest more cheaply than one failed run at a time.
+
+
+---
+
+## 11. The Synthetic Price Model Was Too Pessimistic
+
+A full 2025 on real ERCOT prices at `HRNT_SLR_RN`:
+
+| | synthetic | real 2025 |
+|---|---|---|
+| capture rate | 57.8% | **82.2%** |
+| time-weighted price | $26.07 | $23.31 |
+| generation-weighted price | $12.31 | **$19.17** |
+| curtailment value | -$12,358 | **-$337,369** |
+| capacity factor | — | 0.3286 |
+| exported energy | — | 287,836 MWh |
+
+`synthetic_prices` **over-stated cannibalisation by about 24 points**. It
+suppressed midday prices far harder than the market did, which drove the
+generation-weighted price to $12.31 against an actual $19.17.
+
+**Its qualitative claims held.** Capture well below unity, curtailment carrying
+negative value, energy and cost rankings diverging - all reproduced on real
+data. The mechanism was right; the magnitude was not.
+
+The curtailment figure is the more interesting one. The synthetic model gave
+-$12,358 and reality gives **-$337,369** - the same sign, 27 times larger.
+Curtailment paying for itself is not an artefact of the stand-in; it is a real
+feature of a solar node in ERCOT, and the stand-in badly understated it.
+
+**Anything quantitative derived from synthetic prices should be re-derived.**
+The qualitative lessons in the SQL curriculum and the notebooks stand.
