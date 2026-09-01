@@ -957,7 +957,10 @@ def _real_prices_for(config: PlantConfig, index, args):
 
     # A price series that starts after the dataset does would be forward-filled
     # from nothing, so require real coverage rather than inventing it.
-    if combined.empty or combined.index[0] > index[0]:
+    # Require real coverage, but tolerate a lead-in shorter than a day: price
+    # series begin at local midnight, which is 06:00 UTC in Central time, and
+    # demanding an exact or earlier start rejected a full year of valid prices.
+    if combined.empty or combined.index[0] > index[0] + pd.Timedelta(days=1):
         return None
 
     return align_prices(combined, index)
@@ -980,13 +983,23 @@ def command_score(config: PlantConfig, args: argparse.Namespace) -> int:
     """
     from .scoring import run_blind_scoring
 
-    prices = _real_prices_for(
-        config,
-        pd.DatetimeIndex(
-            pd.date_range("2025-01-01", "2025-12-31", freq="15min", tz="UTC")
-        ),
-        args,
+    # Read the dataset's own timestamps. A synthesised calendar year starts at
+    # 00:00 UTC while ERCOT prices start at 06:00 UTC - midnight Central - so
+    # the coverage guard rejected perfectly good data for being six hours late.
+    connection = duckdb_connection(args.dataset, args.run_id, "analyst")
+    span = connection.execute(
+        "SELECT min(time), max(time) FROM plant_telemetry"
+    ).fetchone()
+    connection.close()
+
+    index = pd.DatetimeIndex(
+        pd.date_range(
+            pd.Timestamp(span[0]).tz_convert("UTC"),
+            pd.Timestamp(span[1]).tz_convert("UTC"),
+            freq="15min",
+        )
     )
+    prices = _real_prices_for(config, index, args)
     if prices is None:
         print("No cached real prices; the cost ranking needs them.\n")
 

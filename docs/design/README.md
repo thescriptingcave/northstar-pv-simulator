@@ -106,7 +106,8 @@ Time-Series and Financial Questions
 40. `40_dashboard_verification_record.md` - panel queries executed; only rendering outstanding
 41. `41_usability_record.md` - eight defects found by running from a clean checkout
 42. `42_ercot_retention_record.md` - measured ERCOT retention and the year-overlap constraint
-43. `43_observed_data_record.md` - running the simulator on fetched data; two defects still open
+43. `43_observed_data_record.md` - running the simulator on fetched data
+44. `44_release_gate_scoring_record.md` - blind scoring; criterion 1 measured, criterion 3 blocked
 
 ## Reading Order
 

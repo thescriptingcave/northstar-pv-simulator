@@ -179,6 +179,26 @@ at the old byte offset in the new file.
 failure modes that version control simply does not have. This script should be
 deleted now that the repository is on GitHub.
 
+## Phase 14 — blind scoring, on branch
+
+`northstar_sim/scoring.py` scores blind analysis against injected truth. The
+detector sees the analyst tree only; truth is opened afterwards to score.
+
+**Criterion 1 measured for the first time**: 39.2% recall, 81.7% precision on a
+full year (42.9% / 75.0% on a week, so stable). That is a statement about a
+naive peer-ratio detector, not about the data — it misses stuck trackers and
+soiling by construction. A better detector is the right response, not a lower
+bar.
+
+**Criterion 3 blocked.** Loss is computed as `available_power_kw -
+ac_power_kw`, which only sees faults that open a gap between capability and
+outcome. A stuck tracker reduces available power itself, so two of four
+scenario classes contribute nothing and the ranking proves nothing.
+
+The fix is a **fault-free counterfactual**: the same weather and seed with
+`--no-faults`, attributing each scenario's loss as the difference. Needs a
+second full-year run plus attribution logic. See `44 §3`.
+
 ## Known noise
 
 **513 `DeprecationWarning`s on pandas 3.x / numpy 2.4+**, reading "The
