@@ -95,13 +95,23 @@ price coverage. DR-015 is provisional until then — see `21 §5`.
 | Doc 01 §8 criteria 2 and 3 scored blind | Attribution and valuation are demonstrated but not scored |
 | Availability and PR recovery (T7) | Only degradation has been run |
 
-## Phase 13 — in progress, on branch
+## Phase 13 — COMPLETE
 
 `generate --real` runs the plant on fetched NSRDB irradiance and ERCOT prices.
 The loaders, harmonization, physics and export all work; a full simulated year
 produces 56 million rows and 287,835.8 MWh.
 
-**Acceptance rejects the output, and the cause is not yet found.**
+**A full simulated year passes acceptance on real data: 24 checks, 0
+failures.** 56 million rows, both DST transitions, 365 date partitions, and the
+full ERCOT price year at the plant's own node.
+
+Getting there took six defects, recorded in `43`. The one that mattered:
+`_first_order_lag` propagated NaN forever, so a single gap in truth POA killed
+measured irradiance and cell temperature for the rest of the record. It looked
+like a scale problem for two rounds of evidence and was actually seasonal —
+every passing run was June, every failing run included January.
+
+The historical failure state, kept because the diagnosis is the useful part:
 
 | | |
 |---|---|

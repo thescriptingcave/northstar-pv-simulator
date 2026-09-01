@@ -300,3 +300,57 @@ def test_sensor_gate_passes(run, base) -> None:
     """The Phase 6 acceptance gate."""
     gate = run_sensor_gate(run, daylight=base["solar_zenith"] < 80)
     assert gate.passed, gate.render()
+
+
+def test_instrument_lag_does_not_propagate_a_gap_forever() -> None:
+    """The recursion reads its own previous output, so one NaN poisons the rest.
+
+    Observed on a January month: truth POA carried 9,600 gaps, the first
+    arrived 834 minutes into the record, and measured POA and cell temperature
+    were NaN from that point to the end of the year - 98% of the channel.
+
+    Only the two sensor classes with a response time constant were affected.
+    Power and voltage have none and were untouched, which is what identified
+    the cause.
+    """
+    from northstar_sim.sensors import _first_order_lag
+
+    index = pd.date_range("2025-01-01", periods=10, freq="1min", tz="UTC")
+    values = np.array(
+        [100.0, 110.0, 120.0, np.nan, np.nan, 200.0, 210.0, 220.0, 230.0, 240.0]
+    )
+
+    response = _first_order_lag(values, index, 20.0)
+
+    assert not np.isnan(response[5:]).any(), "the gap must not propagate"
+    assert np.isclose(response[9], 240.0, atol=5.0), "must converge after recovery"
+
+
+def test_lag_holds_its_last_value_through_a_gap() -> None:
+    """Correct instrument behaviour, not just NaN-avoidance.
+
+    A pyranometer that misses a reading does not stop working; it has no new
+    information to move toward, so it holds.
+    """
+    from northstar_sim.sensors import _first_order_lag
+
+    index = pd.date_range("2025-01-01", periods=6, freq="1min", tz="UTC")
+    values = np.array([100.0, 100.0, np.nan, np.nan, np.nan, 100.0])
+
+    response = _first_order_lag(values, index, 20.0)
+
+    assert np.allclose(response[2:5], response[1]), "held through the gap"
+
+
+def test_lag_is_unchanged_without_gaps() -> None:
+    """The fix must not alter behaviour on clean data."""
+    from northstar_sim.sensors import _first_order_lag
+
+    index = pd.date_range("2025-01-01", periods=20, freq="1min", tz="UTC")
+    values = np.linspace(0.0, 500.0, 20)
+
+    response = _first_order_lag(values, index, 20.0)
+
+    assert not np.isnan(response).any()
+    assert response[0] == values[0]
+    assert response[-1] < values[-1], "a lag trails a rising signal"

@@ -6,8 +6,11 @@ figure this project has published came from `clearsky_resource` and
 `synthetic_prices` - both of which document themselves as development
 substitutes for exactly that data.
 
-This phase connects them. It is **incomplete**: week-scale runs pass acceptance
-on real data, a full simulated year does not.
+This phase connects them.
+
+**A full simulated year passes acceptance on real data: 24 checks, 0
+failures** — 56 million rows, both DST transitions, 365 date partitions, and
+the full ERCOT price year at `HRNT_SLR_RN`.
 
 ---
 
@@ -115,7 +118,7 @@ This happened twice: fixed on `night_generation`, then reappeared on
 
 ---
 
-## 6. Open: The Scale Defect
+## 6. Resolved: A Gap Poisoned Two Sensor Channels
 
 A full simulated year is **not usable**.
 
@@ -138,9 +141,46 @@ Every downstream failure follows: NaN correlations, empty fleet spread, PR of
 - record duration - measured POA survives a 365-day *index* when only one day
   is simulated
 
-**Not eliminated: simulation volume.** Working runs were 300,000 rows; the
-failing one is 21 million. A bisect on window length should bracket it in three
-runs now that `--start`/`--end` work on the `--real` path.
+**It was not scale at all.** A January month failed at 1.79M inverter rows
+while June passed at 4.6M - nearly three times larger. Controlling for season
+rather than size is what broke it open.
+
+### The cause
+
+`_first_order_lag` applies an instrument time constant with a recursion that
+reads its own previous output:
+
+```python
+response[i] = response[i - 1] + alpha * (values[i] - response[i - 1])
+```
+
+**One NaN input makes every subsequent output NaN, permanently.**
+
+Truth POA carried 9,600 gaps in that month. The first arrived 834 minutes in,
+and measured POA and cell temperature were NaN from there to the end - 33,360
+surviving values out of 1,785,640.
+
+Only `irradiance` (20 s) and `temperature` (60 s) have a response time
+constant. `power` and `voltage` are zero and skip the lag entirely, which is
+why AC and DC were untouched while POA and cell temperature died together.
+That asymmetry is what identified it.
+
+June passed because no gap fell early enough in the window to matter.
+
+### The fix
+
+A missing input now holds the previous response, and the first good reading
+after a gap restarts the filter. That is also the correct instrument
+behaviour: a pyranometer that misses a reading does not stop working, it simply
+has no new information to move toward.
+
+### Why it took so long to find
+
+Four hypotheses were eliminated first - defects, closure repair, soiling,
+record duration - and a fifth, simulation volume, survived two rounds of
+evidence while being wrong. The variable that mattered was **season**, and it
+was not being controlled for: every passing run was June, every failing run
+included January.
 
 ---
 
@@ -181,3 +221,45 @@ failed run at a time.
   is the fallback, not the only source **(applied)**
 - `19 §16`: harmonization normalizes separators, not only case **(applied)**
 - `15 §12`: the acceptance report prefers real prices where they exist
+
+
+---
+
+## 10. Complete
+
+```
+VERDICT: ACCEPTED  (24 checks, 0 failures)
+```
+
+A full 2025 on fetched NSRDB irradiance and fetched ERCOT prices.
+
+**A real capture rate exists for the first time.** January measured 56.8%
+against the 57.8% the README carries from `synthetic_prices` — a model built
+without ever seeing ERCOT data. That agreement is a meaningful check on the
+synthetic stand-in, though a winter month flatters solar capture and the
+annual figure is the one to publish.
+
+### What remains open
+
+`40 illegal STARTING -> CURTAILED transitions`. Curtailment is commanded while
+an inverter is inside its startup dwell and `07`'s transition table has no edge
+for it. Only real price data reaches this path: synthetic prices rarely go
+negative in the minutes after sunrise. It does not block the dataset - the
+acceptance report passes - but it is a genuine gap in the state machine.
+
+### The cost, honestly
+
+Six defects, and every one was mine:
+
+| Defect | What it broke |
+|---|---|
+| Harmonizer matched case but not separators | Five NSRDB columns unmapped in **every cached partition** |
+| Closure repair divided by a near-zero cosine | Measured AC at 405% of nameplate |
+| Five checks formatted a possibly-`None` aggregate | Crashed instead of failing |
+| Acceptance regenerated synthetic prices | Capture rate 123-128% at every scale |
+| `_first_order_lag` propagated NaN | 98% of two channels dead from the first gap onward |
+| Corrected-PR direction used an unweighted mean | 23.2 C simple against 25.5 C weighted, either side of the reference |
+
+Four of the six were **acceptance checks written against clean, short
+fixtures** that real year-long data broke. `§8` states the pass that would find
+the rest more cheaply than one failed run at a time.

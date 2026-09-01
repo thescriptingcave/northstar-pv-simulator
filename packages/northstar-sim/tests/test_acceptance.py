@@ -320,3 +320,31 @@ def test_real_price_lookup_returns_none_without_coverage(config, tmp_path) -> No
     args = argparse.Namespace(cache_root=tmp_path, settlement_point=None)
 
     assert _real_prices_for(config, index, args) is None
+
+
+def test_corrected_pr_direction_uses_an_irradiance_weighted_mean() -> None:
+    """A simple daylight mean counts a winter dawn like a summer noon.
+
+    The temperature correction is applied per interval and summed into an
+    energy total, so high-irradiance intervals dominate - and those are the
+    warmest. On a January month the daylight mean cell temperature was 23.3 C,
+    below the 25 C reference, while the energy that set the direction was
+    produced well above it. The check predicted the wrong sign and failed a
+    good dataset.
+    """
+    import pandas as pd
+
+    # Many cold, dim intervals and a few hot, bright ones.
+    frame = pd.DataFrame(
+        {
+            "poa": [60.0] * 20 + [900.0] * 5,
+            "cell": [5.0] * 20 + [45.0] * 5,
+        }
+    )
+    simple = frame["cell"].mean()
+    weighted = (frame["cell"] * frame["poa"]).sum() / frame["poa"].sum()
+
+    assert simple < 25.0 < weighted, (
+        "the two statistics must disagree about the reference, which is why "
+        "the choice matters"
+    )

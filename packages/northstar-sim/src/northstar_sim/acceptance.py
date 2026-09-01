@@ -793,7 +793,19 @@ def _kpis(report: AcceptanceReport, db, config) -> None:
     # Hardcoding the hot-climate direction rejected a December dataset whose
     # mean cell temperature was 18.9 C. The check now derives the expected
     # direction from the data.
-    mean_cell = float(merged["cell"][merged["poa"] > 50].mean())
+    # **Weight by irradiance.** The correction is applied per interval and
+    # summed into an energy total, so high-irradiance intervals dominate the
+    # result - and those are exactly the warmest ones. A simple mean counts a
+    # 60 W/m2 winter dawn the same as a 900 W/m2 noon, which put the daylight
+    # mean at 23.3 C, below the 25 C reference, while the energy that actually
+    # sets the direction was produced well above it.
+    daylight = merged[merged["poa"] > 50]
+    weights = daylight["poa"]
+    mean_cell = (
+        float((daylight["cell"] * weights).sum() / weights.sum())
+        if weights.sum() > 0
+        else float("nan")
+    )
     corrected_should_exceed = mean_cell > T_REF_C
     direction_holds = (
         metrics.performance_ratio_corrected > metrics.performance_ratio
@@ -803,8 +815,8 @@ def _kpis(report: AcceptanceReport, db, config) -> None:
         "performance_ratio_corrected",
         f"{metrics.performance_ratio_corrected:.4f}",
         passed=direction_holds,
-        detail=f"mean cell {mean_cell:.1f} C, so corrected PR should be "
-        f"{'above' if corrected_should_exceed else 'below'} raw",
+        detail=f"irradiance-weighted mean cell {mean_cell:.1f} C, so corrected "
+        f"PR should be {'above' if corrected_should_exceed else 'below'} raw",
     )
     # The band must span the seasons this simulator can produce. A 0.15 floor
     # was calibrated on summer data and rejected a perfectly valid December

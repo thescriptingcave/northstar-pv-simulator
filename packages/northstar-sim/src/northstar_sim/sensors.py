@@ -314,10 +314,31 @@ def _first_order_lag(
 
     response = np.empty_like(values)
     response[0] = values[0]
+
+    # A missing input must not poison the rest of the record. The recursion
+    # reads its own previous output, so a single NaN makes every subsequent
+    # value NaN - permanently.
+    #
+    # Observed on a January month: truth POA carried 9,600 gaps, the first
+    # arrived 834 minutes in, and measured POA and cell temperature were NaN
+    # from that point to the end of the year. Only the two sensor classes with
+    # a response time constant were affected, which is what identified it;
+    # power and voltage have none and were untouched.
+    #
+    # Holding the last response through a gap is also the correct instrument
+    # behaviour: a pyranometer that misses a reading does not stop working, it
+    # simply has no new information to move toward.
     for position in range(1, len(values)):
-        response[position] = response[position - 1] + alpha * (
-            values[position] - response[position - 1]
-        )
+        previous = response[position - 1]
+        current = values[position]
+        if np.isnan(current):
+            response[position] = previous
+        elif np.isnan(previous):
+            # Recovering from a gap: restart from the first good reading rather
+            # than lagging toward it from nothing.
+            response[position] = current
+        else:
+            response[position] = previous + alpha * (current - previous)
     return response
 
 
