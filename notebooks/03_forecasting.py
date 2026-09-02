@@ -13,13 +13,11 @@
 
 # %%
 
-import numpy as np
 import pandas as pd
-
 from northstar_analytics import (
     build_features,
-    find_dataset,
     evaluate_forecast,
+    find_dataset,
     leaking_columns,
     open_dataset,
 )
@@ -66,8 +64,10 @@ print(f"leakage check: {leaks if leaks else 'none detected'}")
 # %%
 leaky = features.copy()
 leaky["concurrent_output"] = frame["grid_export_power_kw"]
-print(f"with concurrent target added: "
-      f"{leaking_columns(leaky, frame, 'grid_export_power_kw')}")
+print(
+    f"with concurrent target added: "
+    f"{leaking_columns(leaky, frame, 'grid_export_power_kw')}"
+)
 
 # %% [markdown]
 # ## Train and evaluate against persistence
@@ -98,8 +98,10 @@ baseline = evaluate_forecast(
 
 print(f"{'model':<20} {'MAE (kW)':>12} {'RMSE (kW)':>12} {'skill':>10}")
 for result in (baseline, score):
-    print(f"{result.name:<20} {result.mae:>12,.0f} {result.rmse:>12,.0f} "
-          f"{result.skill:>9.1%}")
+    print(
+        f"{result.name:<20} {result.mae:>12,.0f} {result.rmse:>12,.0f} "
+        f"{result.skill:>9.1%}"
+    )
 
 # %% [markdown]
 # ## Reading the result
@@ -117,10 +119,14 @@ ramps = test["grid_export_power_kw"].diff().abs()
 steep = ramps > ramps.quantile(0.9)
 
 steep_score = evaluate_forecast(
-    test["grid_export_power_kw"][steep], predicted[steep],
-    persistence[steep], "gradient boosting, steep ramps",
+    test["grid_export_power_kw"][steep],
+    predicted[steep],
+    persistence[steep],
+    "gradient boosting, steep ramps",
 )
-print(f"on the steepest 10% of ramps: MAE {steep_score.mae:,.0f} kW, "
-      f"skill {steep_score.skill:.1%}")
+print(
+    f"on the steepest 10% of ramps: MAE {steep_score.mae:,.0f} kW, "
+    f"skill {steep_score.skill:.1%}"
+)
 
 db.close()

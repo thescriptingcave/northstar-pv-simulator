@@ -42,3 +42,21 @@ __all__ = [
     "open_dataset",
     "__version__",
 ]
+
+from .imputation import (  # noqa: E402
+    IMPUTABLE,
+    ImputationResult,
+    ImputationScore,
+    find_gaps,
+    impute,
+    score_imputation,
+)
+
+__all__ = list(__all__) + [
+    "IMPUTABLE",
+    "ImputationResult",
+    "ImputationScore",
+    "find_gaps",
+    "impute",
+    "score_imputation",
+]

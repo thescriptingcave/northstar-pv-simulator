@@ -45,6 +45,7 @@ make lab
 
 ```python
 from northstar_analytics import find_dataset, open_dataset
+
 db = open_dataset(find_dataset("curriculum"), "curriculum", "analyst")
 db.execute(open("sql/learning/week1_resource.sql").read().split(";")[0]).df()
 ```
@@ -119,6 +120,59 @@ feature is leakage. If accuracy collapses when you lag every feature, the model
 was reading the answer.
 
 ---
+
+## Week 7 — machine learning on labelled gaps
+
+The analyst tree has gaps from injected communications outages. The truth tree
+has every value. That makes imputation a **supervised problem with free
+labels**, scored in physical units, requiring no annotation.
+
+```bash
+make impute
+```
+
+Measured on the development dataset:
+
+| column | best method | MAE | against forward fill |
+|---|---|---|---|
+| `ac_power_kw` | peer regression | 2.51 kW | **140x better** |
+| `dc_power_kw` | peer regression | 3.74 kW | 101x better |
+| `poa_global` | peer regression | 1.98 W/m² | 47x better |
+| `cell_temperature` | peer median | 0.33 °C | 12x better |
+
+Forward fill is what most production pipelines do. It is 140 times worse,
+because carrying the last value through a daylight gap carries whatever the
+inverter was doing before it went quiet.
+
+**Why the peer methods win so heavily:** a PV plant's assets are highly
+correlated at any instant. The information needed to reconstruct one inverter
+is sitting in the other thirty-nine. That is a property of this domain, not a
+general truth about imputation — and knowing *why* a method works is what an
+interviewer is listening for.
+
+**Two notebooks work through this properly:**
+
+```bash
+make lab
+```
+
+- **`04_imputation.py`** — the full method comparison, why peer methods win in
+  this domain specifically, and how accuracy degrades with gap length. Forward
+  fill goes from 0.05 kW MAE under 30 minutes to **391.93 kW** over 90–180,
+  while peer regression stays at 2.43.
+- **`05_fault_detection.py`** — the harder problem. Includes the finding that
+  injected faults are **bimodal**: a third stop the inverter outright, the rest
+  degrade it to about 0.935 of its peers. One threshold cannot catch both, and
+  that — not tuning — is why the naive detector scores 39%.
+
+**Things to try from here:**
+
+- Beat peer regression with a gradient-boosted model over engineered features
+- Does accuracy degrade with gap length? Score by duration bucket
+- Impute `operating_state`, which is categorical and needs a classifier
+- The same labelled-truth trick applies to fault classification —
+  `scenario_instances` carries the class, and `make score` gives you a baseline
+  at 39.2% recall
 
 ## What to do beyond the queries
 

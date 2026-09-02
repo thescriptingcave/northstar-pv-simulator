@@ -107,6 +107,10 @@ drill: ## Run a SQL drill: make drill FILE=sql/drills/01_window_functions.sql
 	@test -n "$(FILE)" || { echo "usage: make drill FILE=sql/drills/01_window_functions.sql"; ls -1 sql/drills/*.sql; exit 1; }
 	uv run python scripts/run_sql_file.py "$(FILE)"
 
+impute: ## Score gap imputation against withheld truth
+	uv run northstar-sim --config config/northstar.toml impute \
+		--dataset datasets/curriculum --run-id curriculum
+
 score: ## Score blind analysis against injected truth (release gate)
 	uv run northstar-sim --config config/northstar.toml score \
 		--dataset datasets/year --run-id year

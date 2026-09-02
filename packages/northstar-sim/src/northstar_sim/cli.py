@@ -298,6 +298,13 @@ def build_parser() -> argparse.ArgumentParser:
     accept.add_argument("--report", type=Path, default=None)
     accept.add_argument("--no-prices", action="store_true")
 
+    impute = sub.add_parser(
+        "impute",
+        help="score gap imputation against withheld truth",
+    )
+    impute.add_argument("--dataset", type=Path, default=Path("datasets/curriculum"))
+    impute.add_argument("--run-id", default="curriculum")
+
     score = sub.add_parser(
         "score",
         help="score blind analysis against injected truth (doc 16 section 16)",
@@ -966,6 +973,53 @@ def _real_prices_for(config: PlantConfig, index, args):
     return align_prices(combined, index)
 
 
+def command_impute(args: argparse.Namespace) -> int:
+    """Score gap imputation against the truth tree.
+
+    The analyst tree carries gaps from injected communications outages; truth
+    has every value. That makes imputation a supervised problem with free
+    labels, scored in the column's own physical units.
+
+    Args:
+        args: Parsed arguments.
+
+    Returns:
+        Zero on success.
+    """
+    from northstar_analytics import score_imputation
+
+    result = score_imputation(args.dataset, args.run_id)
+
+    print(f"Gaps found: {len(result.gaps)}\n")
+    if not result.gaps.empty:
+        print(result.gaps.head(5).to_string(index=False))
+
+    frame = result.frame()
+    if frame.empty:
+        print("\nNo gaps to score - generate with defects enabled.")
+        return 0
+
+    print("\nImputation error against truth, in each column's own units:\n")
+    print(frame.to_string(index=False))
+
+    print("\nBest method per column:\n")
+    for column in frame["column"].unique():
+        best = result.best(column)
+        worst = max((s for s in result.scores if s.column == column), key=lambda s: s.mae)
+        factor = worst.mae / best.mae if best.mae > 0 else float("inf")
+        print(
+            f"  {column:<18} {best.method:<16} MAE {best.mae:>8.3f}   "
+            f"{factor:>6.1f}x better than {worst.method}"
+        )
+
+    print(
+        "\nForward fill is what most pipelines do. A PV plant's assets are "
+        "highly\ncorrelated at any instant, so the information needed to "
+        "reconstruct one\ninverter is sitting in the other thirty-nine."
+    )
+    return 0
+
+
 def command_score(config: PlantConfig, args: argparse.Namespace) -> int:
     """Score blind detection and cost ranking against injected truth.
 
@@ -1622,6 +1676,8 @@ def main(argv: list[str] | None = None) -> int:
         return command_generate(config, args)
     if args.command == "load":
         return command_load(args)
+    if args.command == "impute":
+        return command_impute(args)
     if args.command == "score":
         return command_score(config, args)
     if args.command == "accept":

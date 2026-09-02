@@ -24,7 +24,7 @@ These are **not** verified. Treat them as a starting point.
 | Item | Why |
 |---|---|
 | ~~Hypertables and continuous aggregates~~ | **VERIFIED** on TimescaleDB 2.17.2 built from source — 5 hypertables, 6 aggregates, 5 compression policies. Three defects found and fixed. See doc 39 |
-| Grafana **rendering** only | **All 11 panel queries execute against live TimescaleDB and return data** (doc 40). What is unverified is the JSON-to-visual step and datasource uid resolution — one `make db-up` away |
+| ~~Grafana rendering~~ | **VERIFIED.** All three dashboards render against a live datasource. A timezone bug in the default window made every panel read "No data" while every component was individually correct — see doc 40 §6 |
 | ~~Role isolation~~ | **VERIFIED** on PostgreSQL 16 — 6/6 checks, and a real defect fixed. See doc 38 |
 | ~~Compression ratio~~ | **MEASURED: 5.48x** (151 MB → 27 MB) |
 | ~~Third reconciliation leg~~ | **CLOSED**: raw SQL, continuous aggregate and DuckDB all agree to 9.9e-8 MWh |

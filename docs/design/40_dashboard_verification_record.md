@@ -117,3 +117,41 @@ treated as one.
 ## 5. Downstream Document Updates Required
 
 - `02 §13`: panel queries are verified against a live database; only rendering is outstanding
+
+
+---
+
+## 6. Rendered
+
+Grafana renders all three dashboards against the live datasource. The last item
+in the "written but never executed" category is closed.
+
+### The bug that made every panel look broken
+
+Panels showed "No data" while the connection tested valid and the SQL was
+correct. Widening the time picker by hand made data appear immediately.
+
+`dataset_time_range` read timestamps back from DuckDB in the **session's local
+timezone**, so `isoformat()` produced `2023-06-20T22:00:00-07:00`. Grafana
+stores that verbatim and re-interprets it against the dashboard timezone, which
+defaults to browser time - shifting the default window off the data.
+
+Every individual component was correct. The datasource authenticated, the uid
+resolved, the SQL was schema-qualified, the panels returned rows when asked.
+Only the **default window** was wrong, and it presented identically to a
+connection failure.
+
+Now emitted as UTC with a `Z` suffix, which has no offset to re-interpret.
+
+### Grafana is now pinned
+
+`grafana/grafana-oss:latest` moved to a major version with reworked
+provisioning partway through development, which is why the logs showed
+`provisioning-repository-controller` and no `provisioning.datasource` line.
+
+Everything else in this project is pinned - pvlib 0.15.2, Python 3.13,
+timescaledb-ha:pg16. `latest` on an infrastructure image was an oversight, and
+it cost real diagnostic time chasing a version difference that looked like a
+configuration error.
+
+Pinned to `11.3.0`.

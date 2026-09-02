@@ -235,4 +235,20 @@ def dataset_time_range(root: Path, run_id: str) -> tuple[str, str] | None:
 
     if not row or row[0] is None:
         return None
-    return row[0].isoformat(), row[1].isoformat()
+
+    # Emit UTC with a "Z" suffix, not a local offset.
+    #
+    # DuckDB returns these in the session's local timezone, so isoformat()
+    # produced strings like "2023-06-20T22:00:00-07:00". Grafana stores that
+    # verbatim and re-interprets it against the dashboard timezone, which
+    # defaults to browser time - shifting the default window off the data and
+    # rendering every panel empty while the connection and the SQL are both
+    # fine.
+    import pandas as pd
+
+    start = pd.Timestamp(row[0]).tz_convert("UTC")
+    end = pd.Timestamp(row[1]).tz_convert("UTC")
+    return (
+        start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )

@@ -11,7 +11,6 @@
 # %%
 
 import pandas as pd
-
 from northstar_analytics import (
     find_dataset,
     fit_expected_power,
@@ -61,8 +60,7 @@ clean = merged[
     & (merged["irradiance"] > 50)
     & (merged["grid_export_power_kw"] > 0)
 ]
-print(f"{len(clean):,} intervals survive filtering "
-      f"({len(clean) / len(merged):.1%})")
+print(f"{len(clean):,} intervals survive filtering ({len(clean) / len(merged):.1%})")
 
 split = int(len(clean) * 0.5)
 train, test = clean.iloc[:split], clean.iloc[split:]
@@ -74,8 +72,7 @@ model = fit_expected_power(
     train["wind_speed"],
 )
 print(f"\nfitted on {model.samples:,} samples, R2 = {model.r_squared:.4f}")
-print(f"coefficients a,b,c,d = "
-      f"{', '.join(f'{c:.6g}' for c in model.coefficients)}")
+print(f"coefficients a,b,c,d = {', '.join(f'{c:.6g}' for c in model.coefficients)}")
 
 # %% [markdown]
 # ## Hold-out performance
@@ -84,15 +81,17 @@ print(f"coefficients a,b,c,d = "
 # not that the model is wrong.
 
 # %%
-predicted = model.predict(
-    test["irradiance"], test["temperature"], test["wind_speed"]
-)
+predicted = model.predict(test["irradiance"], test["temperature"], test["wind_speed"])
 residual = test["grid_export_power_kw"] - predicted
-print(f"hold-out mean absolute error {residual.abs().mean():,.0f} kW "
-      f"({residual.abs().mean() / test['grid_export_power_kw'].mean():.2%} "
-      f"of mean output)")
-print(f"mean residual {residual.mean():+,.0f} kW  "
-      f"(a large signed value means the plant changed between periods)")
+print(
+    f"hold-out mean absolute error {residual.abs().mean():,.0f} kW "
+    f"({residual.abs().mean() / test['grid_export_power_kw'].mean():.2%} "
+    f"of mean output)"
+)
+print(
+    f"mean residual {residual.mean():+,.0f} kW  "
+    f"(a large signed value means the plant changed between periods)"
+)
 
 # %% [markdown]
 # ## Normalised output

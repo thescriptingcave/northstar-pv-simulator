@@ -10,8 +10,6 @@
 # %%
 
 import matplotlib.pyplot as plt
-import pandas as pd
-
 from northstar_analytics import find_dataset, open_dataset
 
 # Located by walking up from the working directory: `jupyter execute`
@@ -104,14 +102,18 @@ fig.tight_layout()
 
 # %%
 band = sample[(sample["poa_global"] > 900) & (sample["poa_global"] < 1000)]
-print(f"naive, 900-1000 W/m2 ({len(band)} samples): "
-      f"r = {band['cell_temperature'].corr(band['dc_power_kw']):+.3f}  "
-      f"<- right sign, badly attenuated")
+print(
+    f"naive, 900-1000 W/m2 ({len(band)} samples): "
+    f"r = {band['cell_temperature'].corr(band['dc_power_kw']):+.3f}  "
+    f"<- right sign, badly attenuated"
+)
 
 narrow = sample[(sample["poa_global"] > 985) & (sample["poa_global"] < 995)]
 if len(narrow) > 30:
-    print(f"narrow band 985-995 W/m2 ({len(narrow)} samples): "
-          f"r = {narrow['cell_temperature'].corr(narrow['dc_power_kw']):+.3f}")
+    print(
+        f"narrow band 985-995 W/m2 ({len(narrow)} samples): "
+        f"r = {narrow['cell_temperature'].corr(narrow['dc_power_kw']):+.3f}"
+    )
 
 # %% [markdown]
 # Controlling properly: regress DC on both irradiance and cell temperature. The
@@ -124,16 +126,16 @@ import numpy as np
 fit = sample[sample["poa_global"] > 200].dropna(
     subset=["poa_global", "cell_temperature", "dc_power_kw"]
 )
-design = np.column_stack(
-    [np.ones(len(fit)), fit["poa_global"], fit["cell_temperature"]]
-)
+design = np.column_stack([np.ones(len(fit)), fit["poa_global"], fit["cell_temperature"]])
 coefficients, *_ = np.linalg.lstsq(design, fit["dc_power_kw"], rcond=None)
 
 mean_dc = fit["dc_power_kw"].mean()
 print(f"controlling for irradiance, {len(fit):,} samples:")
 print(f"  dDC/dPOA  = {coefficients[1]:+.4f} kW per W/m2")
-print(f"  dDC/dTemp = {coefficients[2]:+.4f} kW per C "
-      f"({coefficients[2] / mean_dc:+.4%} of mean output per C)")
+print(
+    f"  dDC/dTemp = {coefficients[2]:+.4f} kW per C "
+    f"({coefficients[2] / mean_dc:+.4%} of mean output per C)"
+)
 print("  module rated temperature coefficient: -0.433%/C")
 print("\nThe controlled estimate recovers the rated coefficient. Neither raw")
 print("correlation does - one is attenuated, and with constant ambient the")
@@ -155,7 +157,9 @@ spread = db.execute("""
     WHERE poa_global > 100
     GROUP BY time
 """).df()
-print(f"mean relative POA spread across the fleet: "
-      f"{(spread['poa_spread'] / spread['poa_mean']).mean():.2%}")
+print(
+    f"mean relative POA spread across the fleet: "
+    f"{(spread['poa_spread'] / spread['poa_mean']).mean():.2%}"
+)
 
 db.close()

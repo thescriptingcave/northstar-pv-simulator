@@ -33,7 +33,10 @@ services:
     shm_size: 1gb
 
   grafana:
-    image: grafana/grafana-oss:latest
+    # Pinned. Everything else in this project is pinned - pvlib 0.15.2,
+    # timescaledb-ha:pg16 - and `latest` silently moved to a Grafana major
+    # version with reworked provisioning during development.
+    image: grafana/grafana-oss:11.3.0
     platform: linux/arm64
     container_name: northstar-grafana
     depends_on:
