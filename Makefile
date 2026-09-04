@@ -133,6 +133,9 @@ real-dataset: ## Generate a dataset from fetched NSRDB and ERCOT data
 generate: ## Generate a custom dataset (see: northstar-sim generate --help)
 	uv run northstar-sim --config config/northstar.toml generate --out datasets/custom
 
+demo: ## Show what the dataset contains - start here
+	uv run python scripts/demo.py
+
 dev-dataset: ## Build the dataset the notebooks and acceptance report consume
 	uv run northstar-sim --config config/northstar.toml curriculum-gate --out datasets/curriculum --write-sql sql/exercises
 

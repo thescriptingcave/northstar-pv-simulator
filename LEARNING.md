@@ -40,8 +40,17 @@ SET search_path TO telemetry, public;
 **Jupyter:**
 
 ```bash
+make notebooks    # converts the .py sources to .ipynb and executes them
 make lab
 ```
+
+The notebooks are stored as `.py` in jupytext percent format — that keeps
+diffs readable in git, since a committed `.ipynb` is mostly base64 output.
+`make notebooks` generates the `.ipynb` files JupyterLab opens with cells.
+
+Opening a `.py` directly gives you a plain script with no cells unless
+jupytext's pairing is active; `jupytext.toml` configures that, but converting
+first is more reliable.
 
 ```python
 from northstar_analytics import find_dataset, open_dataset
@@ -164,6 +173,19 @@ make lab
   injected faults are **bimodal**: a third stop the inverter outright, the rest
   degrade it to about 0.935 of its peers. One threshold cannot catch both, and
   that — not tuning — is why the naive detector scores 39%.
+
+**`06_fault_classification_sklearn.py`** — a `HistGradientBoostingClassifier`
+over nine engineered features, scored against the naive baseline.
+
+Two things it teaches that a successful model would not:
+
+- **The test set had zero positives** on a seven-day record, because faults
+  cluster in time. The fix is not to reshuffle at random — that reintroduces
+  the leak — but to **split by asset**: train on some inverters, test on
+  others. Events stay whole and the model must generalise across equipment.
+- **The naive threshold beat the model**, 100%/95.2% against 53.8%/100%. With
+  21 test positives that is insufficient evidence rather than a verdict, and
+  saying so is the point.
 
 **Things to try from here:**
 

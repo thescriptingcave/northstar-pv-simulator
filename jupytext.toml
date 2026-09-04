@@ -1,0 +1,11 @@
+# Treat notebooks/*.py as notebooks.
+#
+# Without this JupyterLab opens them as plain scripts with no cells, because
+# nothing tells it the `# %%` markers are cell boundaries. The percent format
+# is the one Jupytext, VS Code and PyCharm all understand.
+#
+# Pairing means editing either side updates the other, so the .py stays the
+# version-controlled source and the .ipynb carries the outputs.
+default_jupytext_formats = "py:percent,ipynb"
+notebook_metadata_filter = "-all"
+cell_metadata_filter = "-all"

@@ -1,5 +1,9 @@
 # Quickstart
 
+> **Start with the README** — three commands and you are running. This document
+> is the next layer: what each piece does, and how to add TimescaleDB and
+> Grafana when you want them.
+
 Everything below runs **offline**. No API keys, no database, no network.
 Verified end to end on the shipped archive.
 

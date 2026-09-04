@@ -1,33 +1,35 @@
 # NorthStar PV Solar Farm Simulator
 
-A utility-scale photovoltaic plant simulator that produces realistic,
-explainable, analysis-ready time-series data — physics validated against
-[pvlib](https://pvlib-python.readthedocs.io/), faults and sensor error injected
-from known ground truth, and every claim below verified by a command you can run.
+Generates realistic solar power plant data — 100 MW, minute by minute, with
+faults and sensor errors deliberately injected — so you can practise analysing
+it and check your answers against the truth.
 
-**The product is not the simulator. The product is the dataset**, and the
-questions it makes answerable.
+## Try it in three commands
 
 ```bash
 uv venv && uv sync
-make dev-dataset     # ~2 min → 462k rows of telemetry
-make accept          # → VERDICT: ACCEPTED (25 checks, 0 failures)
+make dev-dataset
+make demo
 ```
 
-Then query it with no server running:
+`make demo` prints a week of real output: daily energy, where the losses went,
+and an inverter that is underperforming. Takes about two minutes in total.
 
-```sql
-SELECT date_trunc('day', time) AS day,
-       sum(grid_export_power_kw) / 60.0 / 1000.0 AS energy_mwh
-FROM read_parquet('datasets/curriculum/analyst/**/*.parquet',
-                  hive_partitioning => true, union_by_name => true)
-WHERE grid_export_power_kw IS NOT NULL
-GROUP BY 1 ORDER BY 1;
-```
+Nothing else is needed. **No database, no Docker, no API keys.**
 
-New here? **[QUICKSTART.md](QUICKSTART.md)**. Learning PV analytics?
-**[LEARNING.md](LEARNING.md)** — a six-week track. What remains:
-**[STATUS.md](STATUS.md)**.
+## Then pick one
+
+| If you want to... | Go to |
+|---|---|
+| Learn PV analytics | [LEARNING.md](LEARNING.md) — a six-week track |
+| Practise SQL for interviews | [`sql/drills/`](sql/drills/) — 17 queries, both dialects |
+| Understand how it works | [QUICKSTART.md](QUICKSTART.md) |
+| Know what is unfinished | [STATUS.md](STATUS.md) |
+
+Everything runs in **DuckDB** with no server. TimescaleDB and Grafana are
+optional and only needed for time-series-specific features — see QUICKSTART.
+
+`make help` lists every command, but you do not need them to start.
 
 ---
 
